@@ -1,0 +1,202 @@
+﻿Diagnose log at 2026-02-21T04:43:57Z
+
+AppPath: C:\Program Files\Git\mingw64\bin\git-credential-manager.exe
+InstallDir: C:\Program Files\Git\mingw64\bin\
+Version: 2.6.1+786ab03440ddc82e807a97c0e540f5247e44cec6
+
+------------
+Diagnostic: Environment
+Skipped: False
+Success: True
+Exception: None
+Log:
+OSType: Windows
+OSVersion: 10.0 (build 26200)
+Reading environment variables... OK
+ Variables:
+HOMEPATH=\Users\honey
+DriverData=C:\Windows\System32\Drivers\DriverData
+COMPUTERNAME=USER
+GIT_TRACE2_PARENT_SID=31c26851-ec4d-4f40-83c4-1c059f198844
+EFC_18772_2283032206=1
+SESSIONNAME=Console
+OneDrive=C:\Users\honey\OneDrive
+PYTHON_BASIC_REPL=1
+BUNDLED_DEBUGPY_PATH=c:\Users\honey\.vscode\extensions\ms-python.debugpy-2025.18.0-win32-x64\bundled\libs\debugpy
+RegionCode=APJ
+PYDEVD_DISABLE_FILE_VALIDATION=1
+TMP=C:\Users\honey\AppData\Local\Temp
+PROCESSOR_REVISION=5000
+USERDOMAIN_ROAMINGPROFILE=USER
+PATHEXT=.COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC;.PY;.PYW;.CPL
+VSCODE_GIT_ASKPASS_MAIN=c:\Users\honey\AppData\Roaming\Code\User\globalStorage\vscode.git\askpass\2d0aa4fb4040936c\askpass-main.js
+VSCODE_JDWP_ADAPTER_ENDPOINTS=c:\Users\honey\.vscode\extensions\vscjava.vscode-java-debug-0.58.5\.noConfigDebugAdapterEndpoints\endpoint-b8e618ad0977e4bb.txt
+GIT_EXEC_PATH=C:/Program Files/Git/mingw64/libexec/git-core
+TEMP=C:\Users\honey\AppData\Local\Temp
+LOCALAPPDATA=C:\Users\honey\AppData\Local
+MSYSTEM=MINGW64
+ANDROID_HOME=C:\Users\honey\AppData\Local\Android\Sdk
+VSCODE_PYTHON_AUTOACTIVATE_GUARD=1
+VBOX_HWVIRTEX_IGNORE_SVM_IN_USE=1
+windir=C:\WINDOWS
+JAVA_HOME=C:\Program Files\Eclipse Adoptium\jdk-17.0.16.8-hotspot
+USERDOMAIN=USER
+platformcode=KV
+EFC_18772_3789132940=1
+Path=C:/Program Files/Git/mingw64/libexec/git-core;C:\Program Files\Git\mingw64\bin;C:\Program Files\Git\usr\bin;C:\Users\honey\bin;C:\Program Files\Eclipse Adoptium\jdk-17.0.16.8-hotspot\bin;C:\Program Files (x86)\Common Files\Oracle\Java\javapath;C:\Program Files\Python312\Scripts\;C:\Program Files\Python312\;C:\WINDOWS\system32;C:\WINDOWS;C:\WINDOWS\System32\Wbem;C:\WINDOWS\System32\WindowsPowerShell\v1.0\;C:\WINDOWS\System32\OpenSSH\;C:\Program Files\HP\HP One Agent;C:\Users\honey\LESLIE'S DOWNLOADS\ngrok;C:\Users\honey\AppData\Roaming\Python\Python312\Scripts;C:\Program Files (x86)\cloudflared\;C:\Program Files\Git\cmd;%ANDROID_HOME%\platform-tools;%ANDROID_HOME%\cmdline-tools\latest\bin;%ANDROID_HOME%\tools;%ANDROID_HOME%\tools\bin;C:\Program Files\nodejs\;C:\Program Files\Eclipse Adoptium\jdk-17.0.16.8-hotspot\bin;C:\Program Files\Eclipse Adoptium\jdk-17.0.16.8-hotspot\bin;C:\Program Files (x86)\Common Files\Oracle\Java\javapath;C:\Program Files\Python312\Scripts\;C:\Program Files\Python312\;C:\WINDOWS\system32;C:\WINDOWS;C:\WINDOWS\System32\Wbem;C:\WINDOWS\System32\WindowsPowerShell\v1.0\;C:\WINDOWS\System32\OpenSSH\;C:\Program Files\HP\HP One Agent;C:\Users\honey\LESLIE'S DOWNLOADS\ngrok;C:\Users\honey\AppData\Roaming\Python\Python312\Scripts;C:\Program Files (x86)\cloudflared\;C:\Program Files\Git\cmd;%ANDROID_HOME%\platform-tools;%ANDROID_HOME%\cmdline-tools\latest\bin;%ANDROID_HOME%\tools;%ANDROID_HOME%\tools\bin;C:\Program Files\nodejs\;C:\Users\honey\AppData\Local\Programs\Microsoft VS Code\bin;C:\Users\honey\AppData\Roaming\npm;c:\Users\honey\.vscode\extensions\vscjava.vscode-java-debug-0.58.5\bundled\scripts\noConfigScripts;c:\Users\honey\.vscode\extensions\ms-python.debugpy-2025.18.0-win32-x64\bundled\scripts\noConfigScripts
+TERM_PROGRAM=vscode
+PROCESSOR_LEVEL=25
+PROCESSOR_IDENTIFIER=AMD64 Family 25 Model 80 Stepping 0, AuthenticAMD
+TMPDIR=C:\Users\honey\AppData\Local\Temp
+VSCODE_GIT_ASKPASS_EXTRA_ARGS=
+VSCODE_GIT_ASKPASS_NODE=C:\Users\honey\AppData\Local\Programs\Microsoft VS Code\Code.exe
+TERM_PROGRAM_VERSION=1.109.0
+GIT_ASKPASS=c:\Users\honey\AppData\Roaming\Code\User\globalStorage\vscode.git\askpass\2d0aa4fb4040936c\askpass.sh
+ProgramFiles(x86)=C:\Program Files (x86)
+PUBLIC=C:\Users\Public
+NUMBER_OF_PROCESSORS=12
+FPS_BROWSER_USER_PROFILE_STRING=Default
+CommonProgramFiles=C:\Program Files (x86)\Common Files
+VSCODE_INJECTION=1
+VSCODE_DEBUGPY_ADAPTER_ENDPOINTS=c:\Users\honey\.vscode\extensions\ms-python.debugpy-2025.18.0-win32-x64\.noConfigDebugAdapterEndpoints\endpoint-b8e618ad0977e4bb.txt
+EFC_18772_2775293581=1
+COLORTERM=truecolor
+CHROME_CRASHPAD_PIPE_NAME=\\.\pipe\crashpad_18504_PJSKXWPEPZJPDPUL
+VSCODE_JAVA_EXEC=C:\Program Files\Eclipse Adoptium\jdk-17.0.16.8-hotspot\bin\java
+PLINK_PROTOCOL=ssh
+ProgramData=C:\ProgramData
+ProgramW6432=C:\Program Files
+VSCODE_GIT_IPC_HANDLE=\\.\pipe\vscode-git-d9c50b3cf3-sock
+ProgramFiles=C:\Program Files (x86)
+OnlineServices=Online Services
+EFC_18772_1262719628=1
+SystemRoot=C:\WINDOWS
+PYTHONSTARTUP=c:\Users\honey\AppData\Roaming\Code\User\workspaceStorage\5fdd0f7afd2d9d799e0e0d7c89d5660f\ms-python.python\pythonrc.py
+HOME=C:\Users\honey
+CommonProgramW6432=C:\Program Files\Common Files
+LOGONSERVER=\\USER
+USERPROFILE=C:\Users\honey
+EFC_18772_1592913036=1
+CommonProgramFiles(x86)=C:\Program Files (x86)\Common Files
+TERM=xterm-256color
+APPDATA=C:\Users\honey\AppData\Roaming
+HOMEDRIVE=C:
+PSModulePath=C:\Users\honey\OneDrive\Documents\WindowsPowerShell\Modules;C:\Program Files\WindowsPowerShell\Modules;C:\WINDOWS\system32\WindowsPowerShell\v1.0\Modules
+VBOX_MSI_INSTALL_PATH=C:\Program Files\Oracle\VirtualBox\
+USERNAME=honey
+PROCESSOR_ARCHITEW6432=AMD64
+FPS_BROWSER_APP_PROFILE_STRING=Internet Explorer
+PROCESSOR_ARCHITECTURE=x86
+OS=Windows_NT
+ComSpec=C:\WINDOWS\system32\cmd.exe
+SystemDrive=C:
+PT8HOME=C:\Program Files\Cisco Packet Tracer 8.2.2
+LANG=en_US.UTF-8
+ALLUSERSPROFILE=C:\ProgramData
+
+
+------------
+Diagnostic: File system
+Skipped: False
+Success: True
+Exception: None
+Log:
+Temporary directory is 'C:\Users\honey\AppData\Local\Temp\'...
+Checking basic file I/O...
+Writing to temporary file 'C:\Users\honey\AppData\Local\Temp\abda4d2fa4ce14c5c7d65351'... OK
+Reading from temporary file 'C:\Users\honey\AppData\Local\Temp\abda4d2fa4ce14c5c7d65351'... OK
+Deleting temporary file 'C:\Users\honey\AppData\Local\Temp\abda4d2fa4ce14c5c7d65351'... OK
+Testing IFileSystem instance...
+UserHomePath: C:\Users\honey
+UserDataDirectoryPath: C:\Users\honey\.gcm
+GetCurrentDirectory(): C:\Users\honey\thesis_app\thesis_app\mobile\acidex
+
+------------
+Diagnostic: Networking
+Skipped: False
+Success: True
+Exception: None
+Log:
+Checking networking and HTTP stack...
+Creating HTTP client... OK
+IsNetworkAvailable: True
+Sending HEAD request to http://example.com...Sending HEAD request to https://example.com... OK
+ OK
+Acquiring free TCP port... OK
+Testing local HTTP loopback connections...
+Creating new HTTP listener for http://localhost:49966/... OK
+Waiting for loopback connection... OK
+Writing response... OK
+Waiting for response data... OK
+Loopback connection data OK
+
+------------
+Diagnostic: Git
+Skipped: False
+Success: True
+Exception: None
+Log:
+Getting Git version... OK
+Git version is '2.51.0.windows.1'
+Locating current repository...Git repository at 'C:/Users/honey/thesis_app/thesis_app/mobile/acidex/.git'
+ OK
+Listing all Git configuration... OK
+Git configuration:
+file:C:/Program Files/Git/etc/gitconfig	diff.astextplain.textconv=astextplain
+file:C:/Program Files/Git/etc/gitconfig	filter.lfs.clean=git-lfs clean -- %f
+file:C:/Program Files/Git/etc/gitconfig	filter.lfs.smudge=git-lfs smudge -- %f
+file:C:/Program Files/Git/etc/gitconfig	filter.lfs.process=git-lfs filter-process
+file:C:/Program Files/Git/etc/gitconfig	filter.lfs.required=true
+file:C:/Program Files/Git/etc/gitconfig	http.sslbackend=schannel
+file:C:/Program Files/Git/etc/gitconfig	core.autocrlf=true
+file:C:/Program Files/Git/etc/gitconfig	core.fscache=true
+file:C:/Program Files/Git/etc/gitconfig	core.symlinks=false
+file:C:/Program Files/Git/etc/gitconfig	pull.rebase=false
+file:C:/Program Files/Git/etc/gitconfig	credential.helper=manager
+file:C:/Program Files/Git/etc/gitconfig	credential.https://dev.azure.com.usehttppath=true
+file:C:/Program Files/Git/etc/gitconfig	init.defaultbranch=master
+file:C:/Users/honey/.gitconfig	user.name=lesleeng
+file:C:/Users/honey/.gitconfig	user.email=amorgandaleslie@gmail.com
+file:.git/config	core.repositoryformatversion=0
+file:.git/config	core.filemode=false
+file:.git/config	core.bare=false
+file:.git/config	core.logallrefupdates=true
+file:.git/config	core.symlinks=false
+file:.git/config	core.ignorecase=true
+
+
+------------
+Diagnostic: Credential storage
+Skipped: False
+Success: True
+Exception: None
+Log:
+ICredentialStore instance is of type: CredentialStore
+Writing test credential... OK
+Reading test credential... OK
+Deleting test credential... OK
+
+------------
+Diagnostic: Microsoft authentication (AAD/MSA)
+Skipped: False
+Success: True
+Exception: None
+Log:
+Broker is not enabled.
+Flow type is: Auto
+Gathering MSAL token cache data... OK
+CacheDirectory: C:\Users\honey\AppData\Local\.IdentityService
+CacheFileName: msal.cache
+CacheFilePath: C:\Users\honey\AppData\Local\.IdentityService\msal.cache
+Creating cache helper... OK
+Verifying MSAL token cache persistence... OK
+
+------------
+Diagnostic: GitHub API
+Skipped: False
+Success: True
+Exception: None
+Log:
+Using 'https://github.com/' as API target.
+Querying '/meta' endpoint... OK
+
