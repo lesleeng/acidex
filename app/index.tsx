@@ -2,6 +2,7 @@
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
 
+
 export default function Welcome() {
   return (
     <View style={styles.container}>

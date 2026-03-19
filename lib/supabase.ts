@@ -11,7 +11,8 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: false,
-    flowType: 'pkce',
-    storageKey: 'acidex-auth',
+    // Use implicit flow for password reset to work properly
+    // PKCE flow can cause issues with password reset tokens
+    flowType: 'implicit',
   },
 })

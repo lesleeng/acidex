@@ -1,5 +1,5 @@
-import { supabase } from '@/lib/supabase'
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react'
+import { Image } from 'expo-image'
 import {
   View,
   Text,
@@ -11,68 +11,107 @@ import {
   Platform,
   ScrollView,
   Alert,
-} from 'react-native';
-import { router } from 'expo-router';
+  Animated,
+} from 'react-native'
+import { router } from 'expo-router'
+import { GoogleSignin } from '@react-native-google-signin/google-signin'
+
+import Colors from '@/constants/colors'
+import { supabase } from '@/lib/supabase'
 
 export default function LoginScreen() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [loading, setLoading] = useState(false)
+
+  const [emailFocused, setEmailFocused] = useState(false)
+  const [passwordFocused, setPasswordFocused] = useState(false)
+
+  const emailLabelAnim = useState(new Animated.Value(0))[0]
+  const passwordLabelAnim = useState(new Animated.Value(0))[0]
+
+  useEffect(() => {
+    GoogleSignin.configure({
+      webClientId:
+        '409625553274-rdsbj4kjv3pb5hmpv39ggl5cupgvdpl9.apps.googleusercontent.com',
+    })
+  }, [])
+
+  useEffect(() => {
+    Animated.timing(emailLabelAnim, {
+      toValue: emailFocused || email.length > 0 ? 1 : 0,
+      duration: 180,
+      useNativeDriver: true,
+    }).start()
+  }, [emailFocused, email])
+
+  useEffect(() => {
+    Animated.timing(passwordLabelAnim, {
+      toValue: passwordFocused || password.length > 0 ? 1 : 0,
+      duration: 180,
+      useNativeDriver: true,
+    }).start()
+  }, [passwordFocused, password])
 
   const handleLogin = async () => {
     if (!email || !password) {
-      Alert.alert('Error', 'Please fill in all fields');
-      return;
+      Alert.alert('Error', 'Please fill in all fields')
+      return
     }
 
-    setLoading(true);
+    setLoading(true)
     try {
-      // TODO: Implement your login API call here
-      // Example:
-      // const response = await fetch('YOUR_API_URL/login', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({ email, password }),
-      // });
-      // const data = await response.json();
-      
-      // For now, simulate success
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      Alert.alert('Success', 'Logged in successfully!');
-      // Navigate to tabs after successful login
-      router.replace('/(tabs)/home');
-    } catch (error) {
-      Alert.alert('Error', 'Invalid email or password');
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      })
+
+      console.log('LOGIN data:', data)
+      console.log('LOGIN error:', error)
+
+      if (error) throw error
+
+      router.replace('/(tabs)/home')
+    } catch (error: any) {
+      Alert.alert('Login Failed', error?.message ?? 'Invalid email or password')
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
   const handleGoogleLogin = async () => {
-    setLoading(true);
-    try {
-      // TODO: Implement Google Sign-In
-      Alert.alert('Google Login', 'Google authentication coming soon');
-    } catch (error) {
-      Alert.alert('Error', 'Google login failed');
-    } finally {
-      setLoading(false);
-    }
-  };
+    if (loading) return
+    setLoading(true)
 
-  const handleFacebookLogin = async () => {
-    setLoading(true);
     try {
-      // TODO: Implement Facebook Login
-      Alert.alert('Facebook Login', 'Facebook authentication coming soon');
-    } catch (error) {
-      Alert.alert('Error', 'Facebook login failed');
+      await GoogleSignin.hasPlayServices()
+      const res = await GoogleSignin.signIn()
+
+      const idToken = (res as any)?.data?.idToken ?? (res as any)?.idToken
+      if (!idToken) throw new Error('No idToken returned by Google')
+
+      const { data, error } = await supabase.auth.signInWithIdToken({
+        provider: 'google',
+        token: idToken,
+      })
+
+      console.log('GOOGLE LOGIN data:', data)
+      console.log('GOOGLE LOGIN error:', error)
+
+      if (error) throw error
+
+      router.replace('/(tabs)/home')
+    } catch (e: any) {
+      console.log('Google native sign-in error:', e)
+      Alert.alert('Google Sign-In Failed', e?.message ?? 'Unknown error')
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
+
+  const showEmailLabel = emailFocused || email.length > 0
+  const showPasswordLabel = passwordFocused || password.length > 0
 
   return (
     <SafeAreaView style={styles.container}>
@@ -81,7 +120,6 @@ export default function LoginScreen() {
         style={styles.keyboardView}
       >
         <ScrollView contentContainerStyle={styles.scrollContent}>
-          {/* Header */}
           <View style={styles.header}>
             <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
               <Text style={styles.backText}>←</Text>
@@ -91,43 +129,105 @@ export default function LoginScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* Title */}
           <Text style={styles.title}>log in</Text>
 
-          {/* Form */}
           <View style={styles.form}>
-            <Text style={styles.label}>your email</Text>
-            <TextInput
-              style={styles.input}
-              value={email}
-              onChangeText={setEmail}
-              placeholder="hello@gmail.com"
-              placeholderTextColor="#999"
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-
-            <Text style={styles.label}>password</Text>
-            <View style={styles.passwordContainer}>
-              <TextInput
-                style={styles.passwordInput}
-                value={password}
-                onChangeText={setPassword}
-                placeholder=""
-                placeholderTextColor="#999"
-                secureTextEntry={!showPassword}
-                autoCapitalize="none"
-              />
-              <TouchableOpacity
-                onPress={() => setShowPassword(!showPassword)}
-                style={styles.eyeButton}
+            {/* EMAIL */}
+            <View style={styles.fieldBlock}>
+              <Animated.Text
+                style={[
+                  styles.floatingLabel,
+                  emailFocused && styles.floatingLabelActive,
+                  {
+                    opacity: emailLabelAnim,
+                    transform: [
+                      {
+                        translateY: emailLabelAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [8, 0],
+                        }),
+                      },
+                    ],
+                  },
+                ]}
               >
-                <Text style={styles.eyeIcon}>{showPassword ? '👁️' : '👁️‍🗨️'}</Text>
-              </TouchableOpacity>
+                email
+              </Animated.Text>
+              <TextInput
+                style={[
+                  styles.underlineInput,
+                  emailFocused && styles.underlineInputActive,
+                ]}
+                value={email}
+                onChangeText={setEmail}
+                placeholder={showEmailLabel ? '' : 'enter your email'}
+                placeholderTextColor="#999"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                onFocus={() => setEmailFocused(true)}
+                onBlur={() => setEmailFocused(false)}
+              />
             </View>
 
-            {/* Login Button */}
+            {/* PASSWORD */}
+            <View style={styles.fieldBlock}>
+              <Animated.Text
+                style={[
+                  styles.floatingLabel,
+                  passwordFocused && styles.floatingLabelActive,
+                  {
+                    opacity: passwordLabelAnim,
+                    transform: [
+                      {
+                        translateY: passwordLabelAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [8, 0],
+                        }),
+                      },
+                    ],
+                  },
+                ]}
+              >
+                password
+              </Animated.Text>
+              <View
+                style={[
+                  styles.passwordUnderlineWrap,
+                  passwordFocused && styles.underlineInputActive,
+                ]}
+              >
+                <TextInput
+                  style={styles.passwordUnderlineInput}
+                  value={password}
+                  onChangeText={setPassword}
+                  placeholder={showPasswordLabel ? '' : 'enter your password'}
+                  placeholderTextColor="#999"
+                  secureTextEntry={!showPassword}
+                  autoCapitalize="none"
+                  onFocus={() => setPasswordFocused(true)}
+                  onBlur={() => setPasswordFocused(false)}
+                />
+                <TouchableOpacity
+                  onPress={() => setShowPassword(!showPassword)}
+                  style={styles.eyeButton}
+                >
+                  <Image
+                    source={showPassword ? require('@/assets/images/show-pw.svg') : require('@/assets/images/hide-pw.svg')}
+                    style={styles.eyeIcon}
+                    contentFit="contain"
+                  />                
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <TouchableOpacity 
+              style={styles.forgotPassword} 
+              onPress={() => router.push('/(auth)/forgot-password')}
+            >
+              <Text style={styles.forgotPasswordText}>forgot password?</Text>
+            </TouchableOpacity>
+
             <TouchableOpacity
               style={[styles.loginButton, loading && styles.buttonDisabled]}
               onPress={handleLogin}
@@ -138,145 +238,184 @@ export default function LoginScreen() {
               </Text>
             </TouchableOpacity>
 
-            {/* Divider */}
-            <Text style={styles.divider}>or sign up with social account</Text>
+            <Text style={styles.divider}>or log in with social account</Text>
 
-            {/* Social Buttons */}
             <View style={styles.socialButtons}>
               <TouchableOpacity
-                style={styles.socialButton}
+                style={[styles.socialButton, loading && styles.buttonDisabled]}
                 onPress={handleGoogleLogin}
                 disabled={loading}
               >
-                <Text style={styles.socialButtonText}>G Google</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.socialButton}
-                onPress={handleFacebookLogin}
-                disabled={loading}
-              >
-                <Text style={styles.socialButtonText}>f Facebook</Text>
+                <View style={styles.socialContent}>
+                  <Image
+                    source={require('@/assets/images/google.png')}
+                    style={styles.googleIcon}
+                    contentFit="contain"
+                  />
+                  <Text style={styles.socialButtonText}>
+                    {loading ? 'loading...' : 'Google'}
+                  </Text>
+                </View>
               </TouchableOpacity>
             </View>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
-  );
+  )
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F5F5F5',
-  },
-  keyboardView: {
-    flex: 1,
-  },
-  scrollContent: {
-    flexGrow: 1,
-    padding: 20,
-  },
+  container: { flex: 1, backgroundColor: Colors.light.background },
+  keyboardView: { flex: 1 },
+  scrollContent: { flexGrow: 1, padding: 20 },
+
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 30,
+    paddingTop: 35,
   },
-  backButton: {
-    padding: 5,
-  },
-  backText: {
-    fontSize: 24,
-    color: '#000',
-  },
-  signupLink: {
-    fontSize: 14,
-    color: '#666',
-  },
+
+  backButton: { paddingLeft: 0 },
+  backText: { fontSize: 30, color: Colors.light.text },
+  signupLink: { fontSize: 18, color: Colors.light.text },
+
   title: {
+    color: Colors.light.text,
     fontSize: 28,
     fontWeight: '600',
-    color: '#000',
-    marginBottom: 30,
-  },
-  form: {
-    flex: 1,
-  },
-  label: {
-    fontSize: 12,
-    color: '#999',
-    marginBottom: 8,
-    marginTop: 16,
-  },
-  input: {
-    backgroundColor: '#FFF',
-    borderRadius: 8,
-    padding: 15,
-    fontSize: 14,
-    color: '#000',
-    borderWidth: 1,
-    borderColor: '#E5E5E5',
-  },
-  passwordContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFF',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#E5E5E5',
-  },
-  passwordInput: {
-    flex: 1,
-    padding: 15,
-    fontSize: 14,
-    color: '#000',
-  },
-  eyeButton: {
-    padding: 15,
-  },
-  eyeIcon: {
-    fontSize: 18,
-  },
-  loginButton: {
-    backgroundColor: '#3D3D3D',
-    borderRadius: 25,
-    padding: 16,
-    alignItems: 'center',
+    marginBottom: 10,
     marginTop: 30,
   },
-  buttonDisabled: {
-    opacity: 0.6,
+
+  form: { flex: 1, paddingTop: 20 },
+
+  fieldBlock: {
+    position: 'relative',
+    height: 50,
+    justifyContent: 'flex-end',
+    marginBottom: 15,
   },
-  loginButtonText: {
-    color: '#FFF',
+
+  floatingLabel: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    fontSize: 12,
+    color: '#999',
+  },
+
+  floatingLabelActive: {
+    color: '#999',
+  },
+
+  underlineInput: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#DADADA',
+    paddingTop: 15,
+    paddingBottom: 4,
+    paddingHorizontal: 0,
     fontSize: 16,
+    color: Colors.light.text,
+    backgroundColor: 'transparent',
     fontWeight: '500',
   },
+
+  underlineInputActive: {
+    borderBottomColor: Colors.light.coffee,
+  },
+
+  passwordUnderlineWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#DADADA',
+    paddingTop: 15,
+  },
+
+  passwordUnderlineInput: {
+    flex: 1,
+    paddingBottom: 4,
+    paddingHorizontal: 0,
+    fontSize: 16,
+    color: Colors.light.text,
+    fontWeight: '500',
+  },
+
+  eyeButton: {
+    paddingLeft: 10,
+    paddingBottom: 8,
+  },
+
+  eyeIcon: { width: 24, height: 24 },
+
+  forgotPassword: {
+    alignSelf: 'flex-end',
+    marginTop: 10,
+    marginBottom: 15,
+  },
+
+  forgotPasswordText: {
+    color: Colors.light.coffee,
+    fontSize: 14,
+    fontWeight: '500',
+  },
+
+  loginButton: {
+    backgroundColor: Colors.light.button,
+    borderRadius: 25,
+    padding: 16,
+    marginTop: 25,
+    alignItems: 'center',
+  },
+
+  buttonDisabled: { opacity: 0.6 },
+
+  loginButtonText: {
+    color: Colors.light.background,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+
   divider: {
     textAlign: 'center',
     color: '#999',
-    fontSize: 12,
-    marginVertical: 25,
+    marginVertical: 30,
   },
+
   socialButtons: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: 15,
   },
+
   socialButton: {
     flex: 1,
-    backgroundColor: '#FFF',
+    backgroundColor: Colors.light.background,
     borderRadius: 25,
-    padding: 14,
+    padding: 10,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#E5E5E5',
+    borderColor: Colors.light.border,
   },
+
+  socialContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  googleIcon: {
+    width: 30,
+    height: 30,
+    marginRight: 8,
+  },
+
   socialButtonText: {
-    color: '#000',
-    fontSize: 14,
-    fontWeight: '500',
+    color: '#3D3D3D',
+    fontSize: 16,
+    fontWeight: '600',
   },
-});
+})

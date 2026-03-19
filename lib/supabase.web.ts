@@ -10,6 +10,6 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     autoRefreshToken: true,
     detectSessionInUrl: true, 
     flowType: 'pkce',
-    storageKey: 'acidex-auth',
+    // storageKey: 'acidex-auth',
   },
 })

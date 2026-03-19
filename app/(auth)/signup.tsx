@@ -1,45 +1,91 @@
-import * as WebBrowser from 'expo-web-browser'
-import * as Linking from 'expo-linking'
-import { supabase } from '@/lib/supabase'
+import AsyncStorage from '@react-native-async-storage/async-storage'
+import { GoogleSignin } from '@react-native-google-signin/google-signin'
+import { Image } from 'expo-image'
+import Colors from '@/constants/colors'
 
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import {
-  View,
+  Alert,
+  Animated,
+  KeyboardAvoidingView,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  StyleSheet,
-  SafeAreaView,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  Alert,
+  View,
 } from 'react-native'
 import { router } from 'expo-router'
 
+import { supabase } from '@/lib/supabase'
+import { AppIcon } from "@/components/app-icon";
+
 export default function SignUpScreen() {
   const [email, setEmail] = useState('')
-  const [name, setName] = useState('')
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
 
-  const handleSignUp = async () => {
-    console.log('SIGN UP CLICKED')
+  const [emailFocused, setEmailFocused] = useState(false)
+  const [nameFocused, setNameFocused] = useState(false)
+  const [passwordFocused, setPasswordFocused] = useState(false)
 
-    if (!email || !name || !password) {
+  const emailLabelAnim = useState(new Animated.Value(0))[0]
+  const nameLabelAnim = useState(new Animated.Value(0))[0]
+  const passwordLabelAnim = useState(new Animated.Value(0))[0]
+
+  useEffect(() => {
+    ;(async () => {
+      await AsyncStorage.setItem('test_key', 'hello')
+      const v = await AsyncStorage.getItem('test_key')
+      console.log('AsyncStorage test:', v)
+    })()
+
+    GoogleSignin.configure({
+      webClientId:
+        '409625553274-rdsbj4kjv3pb5hmpv39ggl5cupgvdpl9.apps.googleusercontent.com',
+    })
+  }, [])
+
+  useEffect(() => {
+    Animated.timing(emailLabelAnim, {
+      toValue: emailFocused || email.length > 0 ? 1 : 0,
+      duration: 180,
+      useNativeDriver: true,
+    }).start()
+  }, [emailFocused, email])
+
+  useEffect(() => {
+    Animated.timing(nameLabelAnim, {
+      toValue: nameFocused || username.length > 0 ? 1 : 0,
+      duration: 180,
+      useNativeDriver: true,
+    }).start()
+  }, [nameFocused, username])
+
+  useEffect(() => {
+    Animated.timing(passwordLabelAnim, {
+      toValue: passwordFocused || password.length > 0 ? 1 : 0,
+      duration: 180,
+      useNativeDriver: true,
+    }).start()
+  }, [passwordFocused, password])
+
+  const handleSignUp = async () => {
+    if (!email || !username || !password) {
       Alert.alert('Error', 'Please fill in all fields')
       return
     }
 
     setLoading(true)
-    console.log('START SIGNUP', { email, name })
-
     try {
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
-        options: { data: { full_name: name } },
+        options: { data: { full_name: username } },
       })
 
       console.log('SIGNUP RESPONSE DATA:', data)
@@ -50,13 +96,8 @@ export default function SignUpScreen() {
       Alert.alert('Success', 'Account created successfully! Please check your email.')
       router.replace('/(auth)/login')
     } catch (err: any) {
-      console.log('SIGNUP CATCH ERROR:', err)
-
       const msg =
-        err?.message ||
-        err?.error_description ||
-        err?.error ||
-        JSON.stringify(err)
+        err?.message || err?.error_description || err?.error || JSON.stringify(err)
 
       if (msg.toLowerCase().includes('password should contain')) {
         Alert.alert(
@@ -66,82 +107,50 @@ export default function SignUpScreen() {
         return
       }
 
-      if (
-        msg.toLowerCase().includes('already registered') ||
-        msg.toLowerCase().includes('already been registered')
-      ) {
+      if (msg.toLowerCase().includes('already registered')) {
         Alert.alert('Email Exists', 'This email is already registered. Please log in instead.')
         return
       }
 
       Alert.alert('Sign Up Failed', msg)
     } finally {
-      console.log('SIGNUP FINALLY')
       setLoading(false)
     }
   }
 
-const runOAuth = async (provider: 'google' | 'facebook') => {
-  if (loading) return
-  setLoading(true)
+  const handleGoogleSignUp = async () => {
+    if (loading) return
+    setLoading(true)
 
-  try {
-    WebBrowser.maybeCompleteAuthSession()
+    try {
+      await GoogleSignin.hasPlayServices()
+      const res = await GoogleSignin.signIn()
 
-    // ✅ callback route is app/callback.tsx -> /callback
-    const redirectTo =
-      Platform.OS === 'web'
-        ? `${window.location.origin}/callback`
-        : Linking.createURL('callback')
+      const idToken = (res as any)?.data?.idToken ?? (res as any)?.idToken
+      if (!idToken) throw new Error('No idToken returned by Google')
 
-    console.log(`OAUTH provider=${provider} redirectTo:`, redirectTo)
+      const { data, error } = await supabase.auth.signInWithIdToken({
+        provider: 'google',
+        token: idToken,
+      })
 
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider,
-      options: {
-        redirectTo,
-        // ✅ only native should use skipBrowserRedirect
-        ...(Platform.OS !== 'web' ? { skipBrowserRedirect: true } : {}),
-      },
-    })
+      console.log('GOOGLE signInWithIdToken data:', data)
+      console.log('GOOGLE signInWithIdToken error:', error)
 
-    if (error) throw error
-    if (!data?.url) throw new Error('No OAuth URL returned')
+      if (error) throw error
 
-    // ✅ WEB: redirect current tab to provider; provider will return to /callback in same tab
-    if (Platform.OS === 'web') {
-      window.location.assign(data.url)
-      return
+      router.replace('/(tabs)/home')
+    } catch (e: any) {
+      console.log('Google native sign-in error:', e)
+      Alert.alert('Google Sign-In Failed', e?.message ?? 'Unknown error')
+    } finally {
+      setLoading(false)
     }
-
-    // ✅ NATIVE: open auth session (in-app browser)
-    const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo)
-    console.log('OAUTH result:', result)
-
-    if (result.type !== 'success') {
-      Alert.alert(
-        `${provider === 'google' ? 'Google' : 'Facebook'} Sign In`,
-        'Cancelled or failed.'
-      )
-      return
-    }
-
-    // ✅ Do NOT exchange here if your callback.tsx handles it.
-    // Your callback screen will exchangeCodeForSession() using the incoming URL.
-  } catch (err: any) {
-    console.log('OAUTH ERROR:', err)
-    Alert.alert(
-      `${provider === 'google' ? 'Google' : 'Facebook'} Sign Up Failed`,
-      err?.message ?? 'Unknown error'
-    )
-  } finally {
-    setLoading(false)
   }
-}
 
-
-  const handleGoogleSignUp = async () => runOAuth('google')
-  const handleFacebookSignUp = async () => runOAuth('facebook')
+  const showEmailLabel = emailFocused || email.length > 0
+  const showNameLabel = nameFocused || username.length > 0
+  const showPasswordLabel = passwordFocused || password.length > 0
 
   return (
     <SafeAreaView style={styles.container}>
@@ -162,42 +171,128 @@ const runOAuth = async (provider: 'google' | 'facebook') => {
           <Text style={styles.title}>sign up</Text>
 
           <View style={styles.form}>
-            <Text style={styles.label}>your email</Text>
-            <TextInput
-              style={styles.input}
-              value={email}
-              onChangeText={setEmail}
-              placeholder="enter your email"
-              placeholderTextColor="#999"
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-
-            <Text style={styles.label}>name</Text>
-            <TextInput
-              style={styles.input}
-              value={name}
-              onChangeText={setName}
-              placeholder="enter your name"
-              placeholderTextColor="#999"
-              autoCapitalize="words"
-            />
-
-            <Text style={styles.label}>password</Text>
-            <View style={styles.passwordContainer}>
+            {/* EMAIL */}
+            <View style={styles.fieldBlock}>
+              <Animated.Text
+                style={[
+                  styles.floatingLabel,
+                  emailFocused && styles.floatingLabelActive,
+                  {
+                    opacity: emailLabelAnim,
+                    transform: [
+                      {
+                        translateY: emailLabelAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [8, 0],
+                        }),
+                      },
+                    ],
+                  },
+                ]}
+              >
+                email
+              </Animated.Text>
               <TextInput
-                style={styles.passwordInput}
-                value={password}
-                onChangeText={setPassword}
-                placeholder="enter your password"
+                style={[
+                  styles.underlineInput,
+                  emailFocused && styles.underlineInputActive,
+                ]}
+                value={email}
+                onChangeText={setEmail}
+                placeholder={showEmailLabel ? '' : 'enter your email'}
                 placeholderTextColor="#999"
-                secureTextEntry={!showPassword}
+                keyboardType="email-address"
                 autoCapitalize="none"
+                autoCorrect={false}
+                onFocus={() => setEmailFocused(true)}
+                onBlur={() => setEmailFocused(false)}
               />
-              <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.eyeButton}>
-                <Text style={styles.eyeIcon}>{showPassword ? '👁️' : '👁️‍🗨️'}</Text>
-              </TouchableOpacity>
+            </View>
+
+            {/* NAME */}
+            <View style={styles.fieldBlock}>
+              <Animated.Text
+                style={[
+                  styles.floatingLabel,
+                  nameFocused && styles.floatingLabelActive,
+                  {
+                    opacity: nameLabelAnim,
+                    transform: [
+                      {
+                        translateY: nameLabelAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [8, 0],
+                        }),
+                      },
+                    ],
+                  },
+                ]}
+              >
+              </Animated.Text>
+              <TextInput
+                style={[
+                  styles.underlineInput,
+                  nameFocused && styles.underlineInputActive,
+                ]}
+                value={username}
+                onChangeText={setUsername}
+                placeholder={showNameLabel ? '' : 'enter your username'}
+                placeholderTextColor="#999"
+                autoCapitalize="words"
+                onFocus={() => setNameFocused(true)}
+                onBlur={() => setNameFocused(false)}
+              />
+            </View>
+
+            {/* PASSWORD */}
+            <View style={styles.fieldBlock}>
+              <Animated.Text
+                style={[
+                  styles.floatingLabel,
+                  passwordFocused && styles.floatingLabelActive,
+                  {
+                    opacity: passwordLabelAnim,
+                    transform: [
+                      {
+                        translateY: passwordLabelAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [8, 0],
+                        }),
+                      },
+                    ],
+                  },
+                ]}
+              >
+                password
+              </Animated.Text>
+              <View
+                style={[
+                  styles.passwordUnderlineWrap,
+                  passwordFocused && styles.underlineInputActive,
+                ]}
+              >
+                <TextInput
+                  style={styles.passwordUnderlineInput}
+                  value={password}
+                  onChangeText={setPassword}
+                  placeholder={showPasswordLabel ? '' : 'enter your password'}
+                  placeholderTextColor="#999"
+                  secureTextEntry={!showPassword}
+                  autoCapitalize="none"
+                  onFocus={() => setPasswordFocused(true)}
+                  onBlur={() => setPasswordFocused(false)}
+                />
+                <TouchableOpacity
+                  onPress={() => setShowPassword(!showPassword)}
+                  style={styles.eyeButton}
+                >
+                  <Image
+                    source={showPassword ? require('@/assets/images/show-pw.svg') : require('@/assets/images/hide-pw.svg')}
+                    style={styles.eyeIcon}
+                    contentFit="contain"
+                  />
+                </TouchableOpacity>
+              </View>
             </View>
 
             <TouchableOpacity
@@ -213,20 +308,33 @@ const runOAuth = async (provider: 'google' | 'facebook') => {
             <Text style={styles.divider}>or sign up with social account</Text>
 
             <View style={styles.socialButtons}>
-              <TouchableOpacity style={styles.socialButton} onPress={handleGoogleSignUp} disabled={loading}>
-                <Text style={styles.socialButtonText}>G Google</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.socialButton} onPress={handleFacebookSignUp} disabled={loading}>
-                <Text style={styles.socialButtonText}>f Facebook</Text>
+              <TouchableOpacity
+                style={[styles.socialButton, loading && styles.buttonDisabled]}
+                onPress={handleGoogleSignUp}
+                disabled={loading}
+              >
+                <View style={styles.socialContent}>
+                  <Image
+                    source={require('@/assets/images/google.png')}
+                    style={styles.googleIcon}
+                    contentFit="contain"
+                  />
+                  <Text style={styles.socialButtonText}>
+                    {loading ? 'loading...' : 'Google'}
+                  </Text>
+                </View>
               </TouchableOpacity>
             </View>
           </View>
 
           <View style={styles.termsContainer}>
             <Text style={styles.termsText}>
-              by signing up, you agree to our <Text style={styles.termsLink}>terms of use</Text>
-              {'\n'}and <Text style={styles.termsLink}>privacy policy</Text>.
+              by signing up, you agree to our <TouchableOpacity onPress={() => router.push('/terms')}>
+              <Text style={styles.termsLink}>terms of use</Text>
+              </TouchableOpacity>
+              {'\n'}and <TouchableOpacity onPress={() => router.push('/policy')}>
+              <Text style={styles.termsLink}>privacy policy</Text>.
+              </TouchableOpacity>
             </Text>
           </View>
         </ScrollView>
@@ -235,61 +343,147 @@ const runOAuth = async (provider: 'google' | 'facebook') => {
   )
 }
 
+
+//            <TouchableOpacity onPress={() => router.push('/app/terms')}>
+//             <Text style={styles.termsLink}>log in</Text>
+//            </TouchableOpacity>
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F5F5F5' },
+  container: { flex: 1, backgroundColor: Colors.light.background },
   keyboardView: { flex: 1 },
   scrollContent: { flexGrow: 1, padding: 20 },
+
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 30,
+    paddingTop: 35,
   },
-  backButton: { padding: 5 },
-  backText: { fontSize: 24, color: '#000' },
-  loginLink: { fontSize: 14, color: '#666' },
-  title: { fontSize: 28, fontWeight: '600', marginBottom: 30 },
-  form: { flex: 1 },
-  label: { fontSize: 12, color: '#999', marginTop: 16, marginBottom: 8 },
-  input: {
-    backgroundColor: '#FFF',
-    borderRadius: 8,
-    padding: 15,
-    borderWidth: 1,
-    borderColor: '#E5E5E5',
+
+  backButton: { paddingLeft: 0 },
+  backText: { fontSize: 30, color: Colors.light.text},
+  loginLink: { fontSize: 18, color: Colors.light.text},
+  title: { color: Colors.light.text, fontSize: 28, fontWeight: '600', marginBottom: 10, marginTop: 30 },
+  form: { flex: 1, paddingTop: 20},
+
+  fieldBlock: {
+    position: 'relative',
+    height: 50,
+    justifyContent: 'flex-end',
+    marginBottom: 15,
   },
-  passwordContainer: {
+
+  floatingLabel: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    fontSize: 12,
+    color: '#999',
+  },
+
+  floatingLabelActive: {
+    color: '#999',
+  },
+
+  underlineInput: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#DADADA',
+    paddingTop: 15,
+    paddingBottom: 4,
+    paddingHorizontal: 0,
+    fontSize: 16,
+    color: Colors.light.text,
+    backgroundColor: 'transparent',
+    fontWeight: 500
+  },
+
+  underlineInputActive: {
+    borderBottomColor: Colors.light.coffee,
+  },
+
+  passwordUnderlineWrap: {
     flexDirection: 'row',
-    borderWidth: 1,
-    borderColor: '#E5E5E5',
-    borderRadius: 8,
-    backgroundColor: '#FFF',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#DADADA',
+    paddingTop: 15,
   },
-  passwordInput: { flex: 1, padding: 15 },
-  eyeButton: { padding: 15 },
-  eyeIcon: { fontSize: 18 },
+
+  passwordUnderlineInput: {
+    flex: 1,
+    paddingBottom: 4,
+    paddingHorizontal: 0,
+    fontSize: 16,
+    color: Colors.light.text,
+    fontWeight: 500
+  },
+
+  eyeButton: {
+    paddingLeft: 10,
+    paddingBottom: 8,
+  },
+
+  eyeIcon: { width: 24, height: 24 },
+
   signUpButton: {
-    backgroundColor: '#3D3D3D',
+    backgroundColor: Colors.light.button,
     borderRadius: 25,
     padding: 16,
-    marginTop: 30,
+    marginTop: 25,
     alignItems: 'center',
+
   },
+
   buttonDisabled: { opacity: 0.6 },
-  signUpButtonText: { color: '#FFF', fontSize: 16 },
-  divider: { textAlign: 'center', color: '#999', marginVertical: 25 },
-  socialButtons: { flexDirection: 'row', gap: 15 },
+
+  signUpButtonText: {
+    color: Colors.light.background,
+    fontSize: 16,
+    fontWeight: 600
+  },
+
+  divider: {
+    textAlign: 'center',
+    color: '#999',
+    marginVertical: 30,
+  },
+
+  socialButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 15,
+  },
+
   socialButton: {
     flex: 1,
-    borderWidth: 1,
-    borderColor: '#E5E5E5',
+    backgroundColor: Colors.light.background,
     borderRadius: 25,
-    padding: 14,
+    padding: 10,
     alignItems: 'center',
-    backgroundColor: '#FFF',
+    borderWidth: 1,
+    borderColor: Colors.light.border,
   },
-  socialButtonText: { fontSize: 14, fontWeight: '500' },
-  termsContainer: { marginTop: 40, marginBottom: 20 },
-  termsText: { textAlign: 'center', fontSize: 11, color: '#999' },
-  termsLink: { textDecorationLine: 'underline' },
+
+  socialContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  googleIcon: {
+    width: 30,
+    height: 30,
+    marginRight: 8,
+  },
+
+  socialButtonText: {
+    color: '#3D3D3D',
+    fontSize: 16,
+    fontWeight: 600,
+  },
+
+  termsContainer: { marginTop: 5},
+  termsText: { textAlign: 'center', fontSize: 13, color: '#999' },
+  termsLink: { fontSize: 12, textDecorationLine: 'underline' },
 })
