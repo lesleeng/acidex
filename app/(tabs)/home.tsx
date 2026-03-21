@@ -1,4 +1,5 @@
 import { Image } from "expo-image";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   Modal,
   Pressable,
@@ -10,6 +11,7 @@ import {
   FlatList,
   NativeSyntheticEvent,
   NativeScrollEvent,
+  ActivityIndicator,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -104,6 +106,10 @@ const factsData = [
 const loopedFacts = [...factsData, ...factsData, ...factsData];
 
 type FactType = (typeof factsData)[0];
+type AnalyzeStatus = "idle" | "no-device" | "analyzing" | "done";
+
+const STREAK_COUNT_KEY = "acidex_streak_count";
+const LAST_ANALYSIS_DATE_KEY = "acidex_last_analysis_date";
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -113,6 +119,11 @@ export default function HomeScreen() {
   const [avatarIndex, setAvatarIndex] = useState<number | null>(null);
   const [userName, setUserName] = useState("User");
   const [selectedFact, setSelectedFact] = useState<FactType | null>(null);
+
+  const [streakCount, setStreakCount] = useState(0);
+  const [isOtgConnected, setIsOtgConnected] = useState(false);
+  const [analyzeModalVisible, setAnalyzeModalVisible] = useState(false);
+  const [analyzeStatus, setAnalyzeStatus] = useState<AnalyzeStatus>("idle");
 
   const coffee = useThemeColor({}, "coffee");
   const text = useThemeColor({}, "text");
@@ -181,6 +192,7 @@ export default function HomeScreen() {
     };
 
     fetchUserAndAvatar();
+    loadStreak();
   }, []);
 
   useEffect(() => {
@@ -193,6 +205,81 @@ export default function HomeScreen() {
 
     return () => clearTimeout(timer);
   }, []);
+
+  const loadStreak = async () => {
+    try {
+      const stored = await AsyncStorage.getItem(STREAK_COUNT_KEY);
+      setStreakCount(stored ? Number(stored) : 0);
+    } catch (error) {
+      console.log("load streak error:", error);
+    }
+  };
+
+  const getTodayString = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = `${now.getMonth() + 1}`.padStart(2, "0");
+    const day = `${now.getDate()}`.padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  const incrementStreakIfNeeded = async () => {
+    try {
+      const today = getTodayString();
+      const lastAnalysisDate = await AsyncStorage.getItem(LAST_ANALYSIS_DATE_KEY);
+      const storedCount = await AsyncStorage.getItem(STREAK_COUNT_KEY);
+      const currentCount = storedCount ? Number(storedCount) : 0;
+
+      if (lastAnalysisDate === today) {
+        setStreakCount(currentCount);
+        return;
+      }
+
+      const newCount = currentCount + 1;
+
+      await AsyncStorage.setItem(STREAK_COUNT_KEY, String(newCount));
+      await AsyncStorage.setItem(LAST_ANALYSIS_DATE_KEY, today);
+
+      setStreakCount(newCount);
+    } catch (error) {
+      console.log("increment streak error:", error);
+    }
+  };
+
+  const detectOtgDevice = async () => {
+    // placeholder lang muna
+    return isOtgConnected;
+  };
+
+  const runAnalysisModule = async () => {
+    // blank placeholder for now
+    return new Promise<void>((resolve) => {
+      setTimeout(() => resolve(), 2200);
+    });
+  };
+
+  const handleAnalyzePress = async () => {
+    const hasOtg = await detectOtgDevice();
+
+    setAnalyzeModalVisible(true);
+
+    if (!hasOtg) {
+      setAnalyzeStatus("no-device");
+      return;
+    }
+
+    setAnalyzeStatus("analyzing");
+
+    try {
+      await runAnalysisModule();
+      await incrementStreakIfNeeded();
+      setAnalyzeStatus("done");
+    } catch (error) {
+      console.log("analysis error:", error);
+      setAnalyzeStatus("idle");
+      setAnalyzeModalVisible(false);
+    }
+  };
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -251,11 +338,18 @@ export default function HomeScreen() {
           { backgroundColor: Colors.light.background },
         ]}
       >
-        <Image
-          source={require("../../assets/images/streak.svg")}
-          style={styles.headerIcon}
-          contentFit="contain"
-        />
+        <View style={[styles.headerSide, styles.headerSideLeft]}>
+          <View style={styles.streakPill}>
+            <Image
+              source={require("../../assets/images/streak.svg")}
+              style={styles.streakPillIcon}
+              contentFit="contain"
+            />
+            <ThemedText style={[styles.streakNumber, { color: coffee }]}>
+              {streakCount}
+            </ThemedText>
+          </View>
+        </View>
 
         <View style={styles.headerMiddle}>
           <ThemedText style={[styles.acidexText, { color: coffee }]}>
@@ -266,16 +360,18 @@ export default function HomeScreen() {
           </ThemedText>
         </View>
 
-        <TouchableOpacity
-          onPress={() => router.push("/(auth)/profile")}
-          activeOpacity={0.7}
-        >
-          <Image
-            source={avatarUrl ? { uri: avatarUrl } : defaultAvatarSource}
-            style={styles.avatarImage}
-            contentFit="cover"
-          />
-        </TouchableOpacity>
+        <View style={[styles.headerSide, styles.headerSideRight]}>
+          <TouchableOpacity
+            onPress={() => router.push("/(auth)/profile")}
+            activeOpacity={0.7}
+          >
+            <Image
+              source={avatarUrl ? { uri: avatarUrl } : defaultAvatarSource}
+              style={styles.avatarImage}
+              contentFit="cover"
+            />
+          </TouchableOpacity>
+        </View>
       </ThemedView>
 
       <ScrollView
@@ -303,10 +399,19 @@ export default function HomeScreen() {
                 styles.analyzeButton,
                 { backgroundColor: Colors.light.background },
               ]}
-              onPress={() => console.log("Analyze coffee pressed")}
+              onPress={handleAnalyzePress}
             >
               <ThemedText style={[styles.analyzeButtonText, { color: coffee }]}>
                 analyze your coffee
+              </ThemedText>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.devOtgToggle}
+              onPress={() => setIsOtgConnected((prev) => !prev)}
+            >
+              <ThemedText style={[styles.devOtgToggleText, { color: coffee }]}>
+                dev otg: {isOtgConnected ? "connected" : "not connected"}
               </ThemedText>
             </TouchableOpacity>
           </ThemedView>
@@ -397,6 +502,89 @@ export default function HomeScreen() {
           </View>
         </View>
       </Modal>
+
+      <Modal
+        visible={analyzeModalVisible}
+        animationType="fade"
+        transparent
+        onRequestClose={() => {
+          if (analyzeStatus !== "analyzing") {
+            setAnalyzeModalVisible(false);
+            setAnalyzeStatus("idle");
+          }
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.analyzeModalContent}>
+            {analyzeStatus === "no-device" && (
+              <>
+                <ThemedText style={[styles.analyzeModalTitle, { color: coffee }]}>
+                  insert device
+                </ThemedText>
+
+                <ThemedText style={[styles.analyzeModalText, { color: text }]}>
+                  No OTG-connected device was detected. Please insert the device
+                  first before analyzing.
+                </ThemedText>
+
+                <Pressable
+                  style={[styles.actionButton, { backgroundColor: coffee }]}
+                  onPress={() => {
+                    setAnalyzeModalVisible(false);
+                    setAnalyzeStatus("idle");
+                  }}
+                >
+                  <ThemedText style={styles.actionButtonText}>okay</ThemedText>
+                </Pressable>
+              </>
+            )}
+
+            {analyzeStatus === "analyzing" && (
+              <>
+                <ActivityIndicator size="large" color={coffee} />
+                <ThemedText
+                  style={[
+                    styles.analyzeModalTitle,
+                    { color: coffee, marginTop: 16 },
+                  ]}
+                >
+                  analyzing...
+                </ThemedText>
+
+                <ThemedText style={[styles.analyzeModalText, { color: text }]}>
+                  Please wait while Acidex prepares your latest coffee analysis.
+                </ThemedText>
+              </>
+            )}
+
+            {analyzeStatus === "done" && (
+              <>
+                <ThemedText style={[styles.analyzeModalTitle, { color: coffee }]}>
+                  analysis complete
+                </ThemedText>
+
+                <ThemedText style={[styles.analyzeModalText, { color: text }]}>
+                  Your result is ready. Tap the button below to view your latest
+                  analysis.
+                </ThemedText>
+
+                <Pressable
+                  style={[styles.actionButton, { backgroundColor: coffee }]}
+                  onPress={() => {
+                    setAnalyzeModalVisible(false);
+                    setAnalyzeStatus("idle");
+                    router.push("/(tabs)/results");
+                  }}
+                >
+                  <ThemedText style={styles.actionButtonText}>
+                    view results
+                  </ThemedText>
+                </Pressable>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
     </ThemedView>
   );
 }
@@ -419,15 +607,44 @@ const styles = StyleSheet.create({
     paddingBottom: 15,
   },
 
-  headerIcon: {
-    width: 30,
-    height: 30,
-    marginRight: 8,
+  headerSide: {
+    flex: 1,
+    justifyContent: "center",
+  },
+
+  headerSideLeft: {
+    alignItems: "flex-start",
+  },
+
+  headerSideRight: {
+    alignItems: "flex-end",
   },
 
   headerMiddle: {
     flex: 1,
     alignItems: "center",
+    justifyContent: "center",
+  },
+
+  streakPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(60,44,36,0.22)",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+
+  streakPillIcon: {
+    width: 16,
+    height: 16,
+    marginRight: 6,
+  },
+
+  streakNumber: {
+    fontSize: 13,
+    fontWeight: "600",
   },
 
   acidexText: {
@@ -478,12 +695,26 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 30,
     borderRadius: 30,
-    marginBottom: 20,
+    marginBottom: 12,
   },
 
   analyzeButtonText: {
     fontSize: 16,
     fontWeight: "700",
+    textTransform: "lowercase",
+  },
+
+  devOtgToggle: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "rgba(60,44,36,0.14)",
+  },
+
+  devOtgToggleText: {
+    fontSize: 11,
+    opacity: 0.75,
     textTransform: "lowercase",
   },
 
@@ -600,6 +831,46 @@ const styles = StyleSheet.create({
   },
 
   closeButtonText: {
+    color: "#F5F5F5",
+    fontSize: 15,
+    fontWeight: "600",
+    textTransform: "lowercase",
+  },
+
+  analyzeModalContent: {
+    width: "100%",
+    maxWidth: 340,
+    backgroundColor: "#FFF",
+    borderRadius: 22,
+    padding: 22,
+    alignItems: "center",
+  },
+
+  analyzeModalTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    textAlign: "center",
+    textTransform: "lowercase",
+    marginBottom: 10,
+  },
+
+  analyzeModalText: {
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: "center",
+    marginBottom: 18,
+  },
+
+  actionButton: {
+    minWidth: 160,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  actionButtonText: {
     color: "#F5F5F5",
     fontSize: 15,
     fontWeight: "600",
