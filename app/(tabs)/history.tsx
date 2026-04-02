@@ -249,26 +249,12 @@ export default function HistoryScreen() {
           { backgroundColor: Colors.light.background },
         ]}
       >
-        <View style={styles.headerSide}>
-          <MaterialCommunityIcons
-            name="water-outline"
-            size={28}
-            color={coffee}
-          />
-        </View>
 
         <View style={styles.headerMiddle}>
-          <ThemedText style={[styles.brand, { color: coffee }]}>
-            acidex.
-          </ThemedText>
           <ThemedText style={[styles.title, { color: coffee }]}>
-            History
+            history.
           </ThemedText>
           <ThemedText style={styles.subtitle}>your full analysis log</ThemedText>
-        </View>
-
-        <View style={[styles.headerSide, styles.headerSideRight]}>
-          <View style={styles.avatarPlaceholder} />
         </View>
       </ThemedView>
 
@@ -353,40 +339,33 @@ const styles = StyleSheet.create({
     paddingBottom: 14,
   },
 
-  headerSide: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "flex-start",
-  },
+  // headerSide: {
+  //   flex: 1,
+  //   justifyContent: "center",
+  //   alignItems: "flex-start",
+  // },
 
-  headerSideRight: {
-    alignItems: "flex-end",
-  },
+  // headerSideRight: {
+  //   alignItems: "flex-end",
+  // },
 
   headerMiddle: {
     flex: 1.6,
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent: "center"
   },
 
-  brand: {
+  title: {
     fontSize: 18,
     fontWeight: "700",
     lineHeight: 20,
     textAlign: "center",
-    marginBottom: 2,
-  },
-
-  title: {
-    fontSize: 24,
-    fontWeight: "700",
-    textAlign: "center",
-    marginBottom: 6,
+    paddingTop: 1,
   },
 
   subtitle: {
     fontSize: 12,
-    color: "#9A8A82",
+    opacity: 0.6,
     textAlign: "center",
   },
 

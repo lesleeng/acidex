@@ -20,7 +20,9 @@ import {
 import { router } from 'expo-router'
 
 import { supabase } from '@/lib/supabase'
-import { AppIcon } from "@/components/app-icon";
+import { AppIcon } from "@/components/app-icon"
+import ShowPwIcon from '@/assets/images/show-pw.svg'
+import HidePwIcon from '@/assets/images/hide-pw.svg'
 
 export default function SignUpScreen() {
   const [email, setEmail] = useState('')
@@ -282,15 +284,16 @@ export default function SignUpScreen() {
                   onFocus={() => setPasswordFocused(true)}
                   onBlur={() => setPasswordFocused(false)}
                 />
+                {/* ✅ SVG used as component, not inside expo-image */}
                 <TouchableOpacity
                   onPress={() => setShowPassword(!showPassword)}
                   style={styles.eyeButton}
                 >
-                  <Image
-                    source={showPassword ? require('@/assets/images/show-pw.svg') : require('@/assets/images/hide-pw.svg')}
-                    style={styles.eyeIcon}
-                    contentFit="contain"
-                  />
+                  {showPassword ? (
+                    <ShowPwIcon width={24} height={24} />
+                  ) : (
+                    <HidePwIcon width={24} height={24} />
+                  )}
                 </TouchableOpacity>
               </View>
             </View>
@@ -343,11 +346,6 @@ export default function SignUpScreen() {
   )
 }
 
-
-//            <TouchableOpacity onPress={() => router.push('/app/terms')}>
-//             <Text style={styles.termsLink}>log in</Text>
-//            </TouchableOpacity>
-
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.light.background },
   keyboardView: { flex: 1 },
@@ -362,10 +360,10 @@ const styles = StyleSheet.create({
   },
 
   backButton: { paddingLeft: 0 },
-  backText: { fontSize: 30, color: Colors.light.text},
-  loginLink: { fontSize: 18, color: Colors.light.text},
+  backText: { fontSize: 30, color: Colors.light.text },
+  loginLink: { fontSize: 18, color: Colors.light.text },
   title: { color: Colors.light.text, fontSize: 28, fontWeight: '600', marginBottom: 10, marginTop: 30 },
-  form: { flex: 1, paddingTop: 20},
+  form: { flex: 1, paddingTop: 20 },
 
   fieldBlock: {
     position: 'relative',
@@ -395,7 +393,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: Colors.light.text,
     backgroundColor: 'transparent',
-    fontWeight: 500
+    fontWeight: '500',
   },
 
   underlineInputActive: {
@@ -416,7 +414,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 0,
     fontSize: 16,
     color: Colors.light.text,
-    fontWeight: 500
+    fontWeight: '500',
   },
 
   eyeButton: {
@@ -432,7 +430,6 @@ const styles = StyleSheet.create({
     padding: 16,
     marginTop: 25,
     alignItems: 'center',
-
   },
 
   buttonDisabled: { opacity: 0.6 },
@@ -440,7 +437,7 @@ const styles = StyleSheet.create({
   signUpButtonText: {
     color: Colors.light.background,
     fontSize: 16,
-    fontWeight: 600
+    fontWeight: '600',
   },
 
   divider: {
@@ -480,10 +477,10 @@ const styles = StyleSheet.create({
   socialButtonText: {
     color: '#3D3D3D',
     fontSize: 16,
-    fontWeight: 600,
+    fontWeight: '600',
   },
 
-  termsContainer: { marginTop: 5},
+  termsContainer: { marginTop: 5 },
   termsText: { textAlign: 'center', fontSize: 13, color: '#999' },
   termsLink: { fontSize: 12, textDecorationLine: 'underline' },
 })

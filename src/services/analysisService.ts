@@ -1,3 +1,11 @@
+// classify pH
+// compute acidity label
+// maybe generate remarks/insight
+// maybe prepare dashboad summaries
+// "WHAT THE READING MEANS"
+
+
+
 import { mockAnalysisRecords } from "../data/analysisMock";
 import { AnalysisRecord } from "../types/analysis";
 

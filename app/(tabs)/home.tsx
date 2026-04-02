@@ -21,6 +21,7 @@ import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { useThemeColor } from "@/hooks/use-theme-color";
 import Colors from "@/constants/colors";
+import StreakIcon from "../../assets/images/streak.svg";
 
 const { width } = Dimensions.get("window");
 
@@ -45,9 +46,9 @@ const factsData = [
       "Coffee naturally contains acids that affect both flavor and digestion.",
     title: "Coffee naturally contains acids",
     fullText:
-      "Coffee contains natural compounds such as chlorogenic acids, quinic acid, and citric acid. These acids contribute to coffee’s bright, tangy, or fruity taste depending on the roast and brewing method. Light roasts usually retain more of these acids, while darker roasts often taste less acidic. Some of these compounds, especially chlorogenic acids, are also known for their antioxidant properties.",
+      "Coffee contains natural compounds such as chlorogenic acids, quinic acid, and citric acid. These acids contribute to coffee's bright, tangy, or fruity taste depending on the roast and brewing method. Light roasts usually retain more of these acids, while darker roasts often taste less acidic. Some of these compounds, especially chlorogenic acids, are also known for their antioxidant properties.",
     suggestion:
-      "Acidity is not always bad—it also helps create coffee’s flavor profile.",
+      "Acidity is not always bad—it also helps create coffee's flavor profile.",
     references: [
       "Farah, A. (2012). Coffee Constituents. Royal Society of Chemistry.",
       "NIH – National Library of Medicine: Chlorogenic acid studies.",
@@ -94,7 +95,7 @@ const factsData = [
     fullText:
       "For some people, coffee can worsen stomach irritation, especially if they already have gastritis, reflux, or a sensitive stomach. This is not caused by acidity alone—caffeine and other compounds in coffee may also contribute. Tolerance varies from person to person, so one person may feel fine while another experiences discomfort after a single cup.",
     suggestion:
-      "Pay attention to your own body’s response—personal tolerance matters most.",
+      "Pay attention to your own body's response—personal tolerance matters most.",
     references: [
       "National Institutes of Health (NIH).",
       "Mayo Clinic – Gastritis and diet guidance.",
@@ -340,11 +341,8 @@ export default function HomeScreen() {
       >
         <View style={[styles.headerSide, styles.headerSideLeft]}>
           <View style={styles.streakPill}>
-            <Image
-              source={require("../../assets/images/streak.svg")}
-              style={styles.streakPillIcon}
-              contentFit="contain"
-            />
+            {/* ✅ SVG used as component, not inside expo-image */}
+            <StreakIcon width={16} height={16} style={styles.streakPillIcon} />
             <ThemedText style={[styles.streakNumber, { color: coffee }]}>
               {streakCount}
             </ThemedText>
@@ -410,7 +408,7 @@ export default function HomeScreen() {
               style={styles.devOtgToggle}
               onPress={() => setIsOtgConnected((prev) => !prev)}
             >
-              <ThemedText style={[styles.devOtgToggleText, { color: coffee }]}>
+              <ThemedText style={[styles.devOtgToggleText, { color: "black" }]}>
                 dev otg: {isOtgConnected ? "connected" : "not connected"}
               </ThemedText>
             </TouchableOpacity>
@@ -592,7 +590,7 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingTop: 15,
+    paddingTop: 5,
   },
 
   scrollContent: {
@@ -637,8 +635,6 @@ const styles = StyleSheet.create({
   },
 
   streakPillIcon: {
-    width: 16,
-    height: 16,
     marginRight: 6,
   },
 
@@ -661,8 +657,8 @@ const styles = StyleSheet.create({
   },
 
   avatarImage: {
-    width: 32,
-    height: 32,
+    width: 35,
+    height: 35,
     borderRadius: 16,
   },
 
@@ -676,11 +672,11 @@ const styles = StyleSheet.create({
   },
 
   illustration: {
-    width: 300,
-    height: 170,
+    width: 280,
+    height: 150,
     alignSelf: "center",
     marginBottom: 1,
-    marginTop: 20,
+    marginTop: 10,
   },
 
   greetingText: {
@@ -709,7 +705,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: "rgba(60,44,36,0.14)",
+    borderColor: "rgba(60, 44, 36, 0)",
   },
 
   devOtgToggleText: {

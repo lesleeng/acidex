@@ -1,3 +1,9 @@
+// where to put the shared types such as :
+// SensorReading
+// AnalysisRecord
+// PhClassification
+
+
 export type PHClassification =
   | "Low Acidic"
   | "Moderate"

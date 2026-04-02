@@ -1,3 +1,9 @@
+//  use usbService
+//  receive raw data
+// pass to parser
+// return clean readings to app/store
+// BRIDGE BETWEEN USB AND APP LOGIC
+
 import { AnalysisRecord } from "../types/analysis";
 
 /**

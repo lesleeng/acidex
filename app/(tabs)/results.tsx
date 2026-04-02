@@ -148,7 +148,7 @@ export default function ResultsScreen() {
     return impacts;
   }
 
-  function getScaleDotPosition(item: AnalysisRecord) {
+  function getScaleDotPosition(item: AnalysisRecord): object {
     if (item.classification === "Highly Acidic") return { right: 22 };
     if (item.classification === "Moderate") return { left: "50%", marginLeft: -10 };
     return { left: 22 };
@@ -166,29 +166,17 @@ export default function ResultsScreen() {
           { backgroundColor: Colors.light.background },
         ]}
       >
-        <View style={styles.headerSide}>
-          <MaterialCommunityIcons
-            name="water-outline"
-            size={28}
-            color={coffee}
-          />
-        </View>
+
 
         <View style={styles.headerMiddle}>
-          <ThemedText style={[styles.brand, { color: coffee }]}>
-            acidex.
-          </ThemedText>
           <ThemedText style={[styles.title, { color: coffee }]}>
-            Results
+            results.
           </ThemedText>
           <ThemedText style={styles.subtitle}>
             your latest coffee analysis
           </ThemedText>
         </View>
 
-        <View style={[styles.headerSide, styles.headerSideRight]}>
-          <View style={styles.avatarPlaceholder} />
-        </View>
       </ThemedView>
 
       <ScrollView
@@ -435,18 +423,21 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
 
+
   title: {
-    fontSize: 24,
+    fontSize: 18,
     fontWeight: "700",
+    lineHeight: 20,
     textAlign: "center",
-    marginBottom: 6,
+    paddingTop: 1,
   },
 
   subtitle: {
     fontSize: 12,
-    color: "#9A8A82",
+    opacity: 0.6,
     textAlign: "center",
   },
+
 
   avatarPlaceholder: {
     width: 32,

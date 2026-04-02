@@ -103,8 +103,7 @@ export default function DashboardScreen() {
       showsVerticalScrollIndicator={false}
     >
       <View style={styles.header}>
-        <ThemedText style={styles.brand}>acidex.</ThemedText>
-        <ThemedText style={styles.title}>Dashboard</ThemedText>
+        <ThemedText style={styles.title}>dashboard.</ThemedText>
         <ThemedText style={styles.subtitle}>your coffee stats</ThemedText>
       </View>
 
@@ -184,22 +183,21 @@ const styles = StyleSheet.create({
     marginTop: 24,
     marginBottom: 18,
   },
-  brand: {
-    fontSize: 24,
-    fontWeight: "800",
-    color: "#3C2C24",
-    marginBottom: 6,
-  },
+
   title: {
-    fontSize: 26,
+    fontSize: 18,
     fontWeight: "700",
-    color: "#3C2C24",
+    lineHeight: 20,
+    textAlign: "center",
+    paddingTop: 8,
   },
+
   subtitle: {
-    fontSize: 16,
-    color: "#8B7D76",
-    marginTop: 6,
+    fontSize: 12,
+    opacity: 0.6,
+    textAlign: "center",
   },
+
   filterRow: {
     marginBottom: 14,
   },

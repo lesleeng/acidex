@@ -18,6 +18,8 @@ import { GoogleSignin } from '@react-native-google-signin/google-signin'
 
 import Colors from '@/constants/colors'
 import { supabase } from '@/lib/supabase'
+import ShowPwIcon from '@/assets/images/show-pw.svg'
+import HidePwIcon from '@/assets/images/hide-pw.svg'
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('')
@@ -212,17 +214,17 @@ export default function LoginScreen() {
                   onPress={() => setShowPassword(!showPassword)}
                   style={styles.eyeButton}
                 >
-                  <Image
-                    source={showPassword ? require('@/assets/images/show-pw.svg') : require('@/assets/images/hide-pw.svg')}
-                    style={styles.eyeIcon}
-                    contentFit="contain"
-                  />                
+                  {showPassword ? (
+                    <ShowPwIcon width={24} height={24} />
+                  ) : (
+                    <HidePwIcon width={24} height={24} />
+                  )}
                 </TouchableOpacity>
               </View>
             </View>
 
-            <TouchableOpacity 
-              style={styles.forgotPassword} 
+            <TouchableOpacity
+              style={styles.forgotPassword}
               onPress={() => router.push('/(auth)/forgot-password')}
             >
               <Text style={styles.forgotPasswordText}>forgot password?</Text>
