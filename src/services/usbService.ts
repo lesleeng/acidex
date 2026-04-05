@@ -115,7 +115,7 @@ export async function sendAsciiCommand(port: UsbSerial, command: string): Promis
 
 export async function waitForArduinoResult(
   port: UsbSerial,
-  timeoutMs = 120000,
+  timeoutMs = 150000,
   onProgress?: ProgressListener
 ): Promise<string> {
   return new Promise((resolve, reject) => {

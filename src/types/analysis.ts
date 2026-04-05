@@ -11,6 +11,7 @@ export type PHClassification =
 
 export type RiskLevel = "Low Risk" | "Moderate Risk" | "High Risk";
 export type BinaryAcidityLabel = "Acidic" | "Non-Acidic";
+export type MlModelKey = "logistic_regression";
 
 export interface AnalysisNarrative {
   summary: string;
@@ -41,6 +42,8 @@ export interface AnalysisRecord {
   classification: PHClassification;
   binaryLabel?: BinaryAcidityLabel;
   mlConfidence?: number;
+  mlModelKey?: MlModelKey;
+  mlModelName?: string;
   stabilizationTimeSec?: number;
   averageVoltage?: number;
   samplesCollected?: number;

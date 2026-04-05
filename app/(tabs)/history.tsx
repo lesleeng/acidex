@@ -1,22 +1,20 @@
-import React, { useMemo, useState } from "react";
-import {
-  ScrollView,
-  StyleSheet,
-  TouchableOpacity,
-  View,
-  TextInput,
-} from "react-native";
-import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import Colors from "@/constants/colors";
 import { useThemeColor } from "@/hooks/use-theme-color";
-import { mockAnalysisRecords } from "@/src/data/analysisMock";
+import { getStoredAnalysisHistory } from "@/src/store/analysisStore";
 import { AnalysisRecord } from "@/src/types/analysis";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import React, { useEffect, useMemo, useState } from "react";
+import {
+    ScrollView,
+    StyleSheet,
+    TextInput,
+    TouchableOpacity,
+    View,
+} from "react-native";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-
-const FILTERS = ["All", "Espresso", "Brewed", "Instant", "Latte"];
 
 const CLASSIFICATION_COLORS: Record<string, { bg: string; text: string; badge: string }> = {
   "Highly Acidic": { bg: "#FCDEDE", text: "#8C1A1A", badge: "#E74C3C" },
@@ -65,17 +63,39 @@ function getHealthAdvisory(item: AnalysisRecord): string {
 
 export default function HistoryScreen() {
   const coffee = useThemeColor({}, "coffee");
+  const [records,        setRecords]        = useState<AnalysisRecord[]>([]);
 
   const [search,         setSearch]         = useState("");
   const [selectedFilter, setSelectedFilter] = useState("All");
-  const [expandedId,     setExpandedId]     = useState<string | null>(
-    mockAnalysisRecords[0]?.id ?? null
-  );
+  const [expandedId,     setExpandedId]     = useState<string | null>(null);
 
-  const sortedRecords = useMemo(() =>
-    [...(mockAnalysisRecords as AnalysisRecord[])].sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    ), []);
+  useEffect(() => {
+    let mounted = true;
+
+    const loadRecords = async () => {
+      const stored = await getStoredAnalysisHistory();
+      if (!mounted) return;
+
+      const sorted = [...stored].sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+      setRecords(sorted);
+      setExpandedId(sorted[0]?.id ?? null);
+    };
+
+    loadRecords();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const filters = useMemo(() => {
+    const uniqueCoffeeTypes = Array.from(new Set(records.map((item) => item.coffeeType))).filter(Boolean);
+    return ["All", ...uniqueCoffeeTypes];
+  }, [records]);
+
+  const sortedRecords = records;
 
   const filteredRecords = useMemo(() =>
     sortedRecords.filter((item) => {
@@ -129,7 +149,7 @@ export default function HistoryScreen() {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={s.filterRow}
           >
-            {FILTERS.map((f) => {
+            {filters.map((f) => {
               const active = selectedFilter === f;
               return (
                 <TouchableOpacity

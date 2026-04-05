@@ -1,6 +1,6 @@
 // @ts-nocheck
-// Deploy with Supabase Edge Functions and set OPENAI_API_KEY in the function secrets.
-// Optional: set OPENAI_MODEL, otherwise gpt-5.4-mini is used.
+// Deploy with Supabase Edge Functions and set GROQ_API_KEY in function secrets.
+// Optional: set GROQ_MODEL, otherwise llama-3.1-8b-instant is used.
 
 type AnalysisInput = {
   coffeeType?: string;
@@ -25,12 +25,12 @@ Deno.serve(async (request) => {
   }
 
   try {
-    const openAiKey = Deno.env.get("OPENAI_API_KEY");
-    if (!openAiKey) {
-      throw new Error("OPENAI_API_KEY is not configured.");
+    const groqApiKey = Deno.env.get("GROQ_API_KEY");
+    if (!groqApiKey) {
+      throw new Error("GROQ_API_KEY is not configured.");
     }
 
-    const model = Deno.env.get("OPENAI_MODEL") || "gpt-5.4-mini";
+    const model = Deno.env.get("GROQ_MODEL") || "llama-3.1-8b-instant";
     const { record } = (await request.json()) as { record?: AnalysisInput };
     if (!record) {
       return Response.json({ error: "Missing record payload." }, { status: 400, headers: corsHeaders });
@@ -40,6 +40,9 @@ Deno.serve(async (request) => {
       "You are generating coffee acidity result guidance for a mobile app.",
       "Use only the provided measurements. Do not invent medical diagnoses.",
       "Keep the tone concise and practical.",
+      "Return valid JSON only.",
+      "Required keys: summary, likelyEffectTitle, likelyEffectItems, advisory, tips, safeTiming, impactItems.",
+      "likelyEffectItems, tips, and impactItems must be arrays of strings.",
       "",
       `Coffee type: ${record.coffeeType ?? "Unknown"}`,
       `pH: ${record.ph ?? "Unknown"}`,
@@ -47,76 +50,44 @@ Deno.serve(async (request) => {
       `Risk level: ${record.riskLevel ?? "Unknown"}`,
       `Stomach state: ${record.stomachState ?? "Unknown"}`,
       `Cups today: ${record.cupsToday ?? "Unknown"}`,
-      `Stabilization time: ${record.stabilizationTimeSec ?? "Unknown"}`,
-      `Average voltage: ${record.averageVoltage ?? "Unknown"}`,
+      `Stabilization time: ${record.stabilizationTimeSec ?? "Unknown"}`,      `Average voltage: ${record.averageVoltage ?? "Unknown"}`,
       `Samples collected: ${record.samplesCollected ?? "Unknown"}`,
     ].join("\n");
 
-    const response = await fetch("https://api.openai.com/v1/responses", {
+    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${openAiKey}`,
+        Authorization: `Bearer ${groqApiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
         model,
-        input: inputText,
-        text: {
-          format: {
-            type: "json_schema",
-            name: "coffee_analysis_narrative",
-            strict: true,
-            schema: {
-              type: "object",
-              additionalProperties: false,
-              properties: {
-                summary: { type: "string" },
-                likelyEffectTitle: { type: "string" },
-                likelyEffectItems: {
-                  type: "array",
-                  items: { type: "string" },
-                  minItems: 2,
-                  maxItems: 4,
-                },
-                advisory: { type: "string" },
-                tips: {
-                  type: "array",
-                  items: { type: "string" },
-                  minItems: 3,
-                  maxItems: 4,
-                },
-                safeTiming: { type: "string" },
-                impactItems: {
-                  type: "array",
-                  items: { type: "string" },
-                  minItems: 2,
-                  maxItems: 4,
-                },
-              },
-              required: [
-                "summary",
-                "likelyEffectTitle",
-                "likelyEffectItems",
-                "advisory",
-                "tips",
-                "safeTiming",
-                "impactItems",
-              ],
-            },
+        messages: [
+          {
+            role: "user",
+            content: inputText,
           },
-        },
+        ],
+        response_format: { type: "json_object" },
       }),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`OpenAI request failed: ${response.status} ${errorText}`);
+      const message = `Groq request failed: ${response.status} ${errorText}`;
+      return Response.json(
+        {
+          error: message,
+          upstreamStatus: response.status,
+        },
+        { status: 502, headers: corsHeaders }
+      );
     }
 
     const payload = await response.json();
-    const outputText = payload?.output?.[0]?.content?.[0]?.text;
+    const outputText = payload?.choices?.[0]?.message?.content;
     if (!outputText || typeof outputText !== "string") {
-      throw new Error("OpenAI response did not include structured text output.");
+      throw new Error("Groq response did not include valid content.");
     }
 
     const narrative = JSON.parse(outputText) as Record<string, unknown>;
@@ -130,6 +101,11 @@ Deno.serve(async (request) => {
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown LLM analysis error.";
-    return Response.json({ error: message }, { status: 500, headers: corsHeaders });
+    return Response.json(
+      {
+        error: message,
+      },
+      { status: 500, headers: corsHeaders }
+    );
   }
 });

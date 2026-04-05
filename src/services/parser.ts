@@ -32,7 +32,8 @@ export function parseArduinoResultBlock(raw: string): SensorReading | null {
         typeof parsed.avgVoltage === "number" &&
         typeof parsed.pH === "number" &&
         typeof parsed.samplesCollected === "number" &&
-        typeof parsed.stabilizationTimeSec === "number"
+        typeof parsed.stabilizationTimeSec === "number" &&
+        parsed.stabilizationTimeSec >= 0
       ) {
         return {
           sampleId: parsed.sample,
@@ -43,7 +44,10 @@ export function parseArduinoResultBlock(raw: string): SensorReading | null {
         };
       }
     } catch (error) {
-      console.log("parseArduinoResultBlock JSON parse error:", error);
+      console.error("parseArduinoResultBlock JSON parse error:", {
+        error: error instanceof Error ? error.message : String(error),
+        raw: raw.substring(0, 200),
+      });
     }
   }
 

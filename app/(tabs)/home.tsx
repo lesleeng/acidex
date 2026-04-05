@@ -18,7 +18,10 @@ import { supabase } from "@/lib/supabase";
 import { Ionicons } from "@expo/vector-icons";
 import { hasUsbDevice } from "@/src/services/usbService";
 import { readSensorData } from "@/src/services/sensorService";
-import type { ArduinoReadProgress } from "@/src/services/usbService";
+import type {
+  ArduinoReadProgress,
+  ArduinoReadStage,
+} from "@/src/services/usbService";
 import { saveAnalysisRecord } from "@/src/store/analysisStore";
 import {
   buildRuleBasedNarrative,
@@ -113,6 +116,34 @@ type FactType = (typeof factsData)[0];
 type AnalyzeStatus = "idle" | "no-device" | "analyzing" | "done" | "error";
 type StomachState = "Empty stomach" | "After meal" | null;
 
+const ANALYZE_STAGE_PROGRESS: Record<ArduinoReadStage | "persisting", number> = {
+  "device-found": 0.1,
+  "port-opened": 0.2,
+  "waiting-before-send": 0.3,
+  "command-sent": 0.42,
+  "serial-received": 0.56,
+  "serial-chunk": 0.66,
+  "arduino-ready": 0.72,
+  "arduino-stable": 0.82,
+  "arduino-collecting": 0.9,
+  "result-detected": 0.97,
+  persisting: 1,
+};
+
+const ANALYZE_STAGE_HINTS: Record<ArduinoReadStage | "persisting", string> = {
+  "device-found": "getting things ready",
+  "port-opened": "starting up",
+  "waiting-before-send": "settling in",
+  "command-sent": "checking the sample",
+  "serial-received": "locking onto the signal",
+  "serial-chunk": "fine-tuning the reading",
+  "arduino-ready": "sample recognized",
+  "arduino-stable": "holding a steady reading",
+  "arduino-collecting": "wrapping up the sample",
+  "result-detected": "almost there",
+  persisting: "putting everything together",
+};
+
 const STREAK_COUNT_KEY      = "acidex_streak_count";
 const LAST_ANALYSIS_DATE_KEY = "acidex_last_analysis_date";
 
@@ -133,14 +164,15 @@ export default function HomeScreen() {
   const [stomachState,         setStomachState]         = useState<StomachState>(null);
   const [probeReady,           setProbeReady]           = useState(false);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
-  const [analyzeProgressMessage, setAnalyzeProgressMessage] = useState<string | null>(null);
-  const [arduinoDebugLines, setArduinoDebugLines] = useState<string[]>([]);
+  const [analyzeStage, setAnalyzeStage] = useState<ArduinoReadStage | "persisting" | null>(null);
   const [pendingRecord,        setPendingRecord]        = useState<AnalysisRecord | null>(null);
 
   const coffee = useThemeColor({}, "coffee");
   const text   = useThemeColor({}, "text");
 
   const fallbackDefaultAvatar = useMemo(() => DEFAULT_AVATARS[0], []);
+  const analyzeProgress = analyzeStage ? ANALYZE_STAGE_PROGRESS[analyzeStage] : 0.08;
+  const analyzeHint = analyzeStage ? ANALYZE_STAGE_HINTS[analyzeStage] : "preparing";
 
   // ── data loading ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -227,35 +259,14 @@ export default function HomeScreen() {
     const hasOtg = await refreshOtgStatus();
     setAnalyzeModalVisible(true);
     setAnalyzeError(null);
-    setAnalyzeProgressMessage(null);
-    setArduinoDebugLines([]);
+    setAnalyzeStage(null);
     setPendingRecord(null);
     if (!hasOtg) { setAnalyzeStatus("no-device"); return; }
     setProbeReady(false);
     setAnalyzeStatus("analyzing");
     try {
       const record = await readSensorData((progress: ArduinoReadProgress) => {
-        setAnalyzeProgressMessage(progress.message);
-
-        if (progress.rawChunk) {
-          const nextLines = progress.rawChunk
-            .split(/\r?\n/)
-            .map((line) => line.trim())
-            .filter(Boolean)
-            .filter(
-              (line) =>
-                line.startsWith("READY SAMPLE") ||
-                line.startsWith("STABLE") ||
-                line.startsWith("COLLECTING") ||
-                line.startsWith("DONE") ||
-                line.startsWith("RESULT_JSON:") ||
-                line.startsWith("DEBUG:")
-            );
-
-          if (nextLines.length) {
-            setArduinoDebugLines((current) => [...current, ...nextLines].slice(-6));
-          }
-        }
+        setAnalyzeStage(progress.stage);
       });
 
       if (!record) {
@@ -298,6 +309,7 @@ export default function HomeScreen() {
     let cancelled = false;
 
     const persistRecord = async () => {
+      setAnalyzeStage("persisting");
       await saveAnalysisRecord(nextRecord);
       if (cancelled) return;
 
@@ -344,8 +356,7 @@ export default function HomeScreen() {
       setProbeReady(false);
       setPendingRecord(null);
       setAnalyzeError(null);
-      setAnalyzeProgressMessage(null);
-      setArduinoDebugLines([]);
+      setAnalyzeStage(null);
     }
   };
 
@@ -602,11 +613,22 @@ export default function HomeScreen() {
                     While the probe reads, tell us your stomach state.
                   </ThemedText>
 
-                  {!!analyzeProgressMessage && (
+                  <View style={styles.analyzeProgressWrap}>
+                    <View style={styles.analyzeProgressTrack}>
+                      <View
+                        style={[
+                          styles.analyzeProgressFill,
+                          {
+                            backgroundColor: coffee,
+                            width: `${Math.max(8, Math.round(analyzeProgress * 100))}%`,
+                          },
+                        ]}
+                      />
+                    </View>
                     <ThemedText style={[styles.analyzeProgressText, { color: coffee }]}>
-                      {analyzeProgressMessage}
+                      {analyzeHint}
                     </ThemedText>
-                  )}
+                  </View>
 
                   {/* stomach log card */}
                   <View style={styles.stomachCard}>
@@ -659,15 +681,6 @@ export default function HomeScreen() {
                     )}
                   </View>
 
-                  {!!arduinoDebugLines.length && (
-                    <View style={styles.analyzeDebugPanel}>
-                      {arduinoDebugLines.map((line, index) => (
-                        <ThemedText key={`${line}-${index}`} style={styles.analyzeDebugLine}>
-                          {line}
-                        </ThemedText>
-                      ))}
-                    </View>
-                  )}
                 </>
               )}
 
@@ -862,26 +875,27 @@ const styles = StyleSheet.create({
     color: "#7A675C", marginBottom: 20,
   },
   analyzeProgressText: {
-    fontSize: 13,
-    lineHeight: 19,
+    fontSize: 12,
+    lineHeight: 18,
     textAlign: "center",
-    marginBottom: 14,
+    marginTop: 8,
     fontWeight: "600",
+    textTransform: "lowercase",
   },
-  analyzeDebugPanel: {
+  analyzeProgressWrap: {
     width: "100%",
-    backgroundColor: "#F7F2EE",
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderWidth: 1,
-    borderColor: "rgba(60,44,36,0.08)",
+    marginBottom: 16,
   },
-  analyzeDebugLine: {
-    fontSize: 11,
-    lineHeight: 16,
-    color: "#5D4A40",
-    fontFamily: "monospace",
+  analyzeProgressTrack: {
+    width: "100%",
+    height: 10,
+    backgroundColor: "#E9DDD5",
+    borderRadius: 999,
+    overflow: "hidden",
+  },
+  analyzeProgressFill: {
+    height: "100%",
+    borderRadius: 999,
   },
 
   actionButton: {

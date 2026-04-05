@@ -4,6 +4,7 @@ import {
   AnalysisRecord,
   AnalysisNarrative,
   BinaryAcidityLabel,
+  MlModelKey,
   PHClassification,
   RiskLevel,
   SensorReading,
@@ -35,6 +36,22 @@ export interface ClassificationMetrics extends ConfusionMatrix {
   total: number;
 }
 
+export interface BinaryClassificationResult {
+  label: BinaryAcidityLabel;
+  confidence: number;
+  modelKey: MlModelKey;
+  modelName: string;
+}
+
+export interface ModelEvaluationResult {
+  key: MlModelKey;
+  name: string;
+  metrics: ClassificationMetrics;
+}
+
+const LOGISTIC_REGRESSION_MODEL_KEY: MlModelKey = "logistic_regression";
+const LOGISTIC_REGRESSION_MODEL_NAME = "Logistic Regression";
+
 function sortNewestFirst(records: AnalysisRecord[]) {
   return [...records].sort(
     (a, b) =>
@@ -56,6 +73,13 @@ export function buildRuleBasedNarrative(
     "coffeeType" | "ph" | "classification" | "riskLevel" | "stomachState" | "cupsToday"
   >
 ): AnalysisNarrative {
+  const acidityDescriptor =
+    item.classification === "Highly Acidic"
+      ? "high acidity coffee"
+      : item.classification === "Moderate"
+        ? "moderate acidity coffee"
+        : "lower acidity coffee";
+
   const summary =
     item.classification === "Highly Acidic"
       ? `Your ${item.coffeeType.toLowerCase()} tested as highly acidic, which may trigger gastric discomfort.`
@@ -70,7 +94,7 @@ export function buildRuleBasedNarrative(
         ? "Possible discomfort"
         : "Lower likelihood of discomfort";
 
-  const likelyEffectItems = [`${item.coffeeType} (high acidity coffee)`];
+  const likelyEffectItems = [`${item.coffeeType} (${acidityDescriptor})`];
   if (item.stomachState === "Empty stomach") {
     likelyEffectItems.push("Empty stomach (session time)");
   } else if (item.stomachState === "After meal") {
@@ -101,7 +125,13 @@ export function buildRuleBasedNarrative(
       ? "Best to drink coffee 30-45 minutes after eating to lessen irritation."
       : "Continue drinking coffee after meals for better stomach comfort.";
 
-  const impactItems = [`${item.coffeeType} (strongest acids from darkness of roast)`];
+  const impactItems = [
+    item.classification === "Highly Acidic"
+      ? `${item.coffeeType} (strong acidity profile in this reading)`
+      : item.classification === "Moderate"
+        ? `${item.coffeeType} (moderate acidity profile in this reading)`
+        : `${item.coffeeType} (milder acidity profile in this reading)`,
+  ];
   if (item.stomachState === "Empty stomach") impactItems.push("Empty stomach (magnifies irritation)");
   if ((item.cupsToday ?? 0) >= 2) impactItems.push("Multiple cups (higher total acidity)");
   if (impactItems.length < 3) impactItems.push("Brewing method can also affect acidity level");
@@ -142,51 +172,153 @@ export function classifyRiskLevel(
   return "Low Risk";
 }
 
-function getFeatureRanges(trainingSet: TrainingSample[]) {
+function getMean(values: number[]) {
+  return values.reduce((sum, value) => sum + value, 0) / (values.length || 1);
+}
+
+function getStandardDeviation(values: number[], mean: number) {
+  const variance =
+    values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / (values.length || 1);
+  return Math.sqrt(variance) || 1;
+}
+
+function sigmoid(value: number) {
+  return 1 / (1 + Math.exp(-value));
+}
+
+type LogisticRegressionModel = {
+  intercept: number;
+  phWeight: number;
+  stabilizationWeight: number;
+  phMean: number;
+  phStd: number;
+  stabilizationMean: number;
+  stabilizationStd: number;
+};
+
+function trainLogisticRegression(trainingSet: TrainingSample[]): LogisticRegressionModel {
   const phValues = trainingSet.map((item) => item.ph);
   const stabilizationValues = trainingSet.map((item) => item.stabilizationTimeSec);
+  const phMean = getMean(phValues);
+  const phStd = getStandardDeviation(phValues, phMean);
+  const stabilizationMean = getMean(stabilizationValues);
+  const stabilizationStd = getStandardDeviation(
+    stabilizationValues,
+    stabilizationMean
+  );
+
+  let intercept = 0;
+  let phWeight = 0;
+  let stabilizationWeight = 0;
+
+  const learningRate = 0.15;
+  const iterations = 2500;
+
+  for (let i = 0; i < iterations; i++) {
+    let interceptGradient = 0;
+    let phGradient = 0;
+    let stabilizationGradient = 0;
+
+    trainingSet.forEach((sample) => {
+      const normalizedPh = (sample.ph - phMean) / phStd;
+      const normalizedStabilization =
+        (sample.stabilizationTimeSec - stabilizationMean) / stabilizationStd;
+      const expected = sample.label === "Acidic" ? 1 : 0;
+      const predicted = sigmoid(
+        intercept + phWeight * normalizedPh + stabilizationWeight * normalizedStabilization
+      );
+      const error = predicted - expected;
+
+      interceptGradient += error;
+      phGradient += error * normalizedPh;
+      stabilizationGradient += error * normalizedStabilization;
+    });
+
+    intercept -= (learningRate * interceptGradient) / trainingSet.length;
+    phWeight -= (learningRate * phGradient) / trainingSet.length;
+    stabilizationWeight -= (learningRate * stabilizationGradient) / trainingSet.length;
+  }
 
   return {
-    phRange: Math.max(...phValues) - Math.min(...phValues) || 1,
-    stabilizationRange:
-      Math.max(...stabilizationValues) - Math.min(...stabilizationValues) || 1,
+    intercept,
+    phWeight,
+    stabilizationWeight,
+    phMean,
+    phStd,
+    stabilizationMean,
+    stabilizationStd,
+  };
+}
+
+function predictWithLogisticRegression(
+  reading: Pick<SensorReading, "ph" | "stabilizationTimeSec">,
+  model: LogisticRegressionModel
+): BinaryClassificationResult {
+  const normalizedPh = (reading.ph - model.phMean) / model.phStd;
+  const normalizedStabilization =
+    (reading.stabilizationTimeSec - model.stabilizationMean) / model.stabilizationStd;
+  const acidicProbability = sigmoid(
+    model.intercept +
+      model.phWeight * normalizedPh +
+      model.stabilizationWeight * normalizedStabilization
+  );
+
+  return {
+    label: acidicProbability >= 0.5 ? "Acidic" : "Non-Acidic",
+    confidence: Math.max(acidicProbability, 1 - acidicProbability),
+    modelKey: LOGISTIC_REGRESSION_MODEL_KEY,
+    modelName: LOGISTIC_REGRESSION_MODEL_NAME,
   };
 }
 
 function classifyBinaryAcidityWithTrainingSet(
   reading: Pick<SensorReading, "ph" | "stabilizationTimeSec">,
   trainingSet: TrainingSample[]
-) {
-  const { phRange, stabilizationRange } = getFeatureRanges(trainingSet);
+): BinaryClassificationResult {
+  const model = trainLogisticRegression(trainingSet);
+  return predictWithLogisticRegression(reading, model);
+}
 
-  const neighbors = trainingSet.map((item) => {
-    const normalizedPh = (reading.ph - item.ph) / phRange;
-    const normalizedStability =
-      (reading.stabilizationTimeSec - item.stabilizationTimeSec) / stabilizationRange;
-    const distance = Math.sqrt(normalizedPh ** 2 + normalizedStability ** 2);
+function evaluateLogisticRegression(
+  trainingSet: TrainingSample[],
+  evaluationMode: "self_test" | "leave_one_out"
+): ModelEvaluationResult {
 
-    return { ...item, distance };
-  }).sort((a, b) => a.distance - b.distance);
+  const matrix = trainingSet.reduce<ConfusionMatrix>(
+    (acc, sample, index) => {
+      const subset =
+        evaluationMode === "leave_one_out"
+          ? trainingSet.filter((_, sampleIndex) => sampleIndex !== index)
+          : trainingSet;
 
-  const topK = neighbors.slice(0, 3);
-  const acidicVotes = topK.filter((item) => item.label === "Acidic").length;
-  const label: BinaryAcidityLabel = acidicVotes >= 2 ? "Acidic" : "Non-Acidic";
-  const confidence = acidicVotes === 0 || acidicVotes === 3 ? 1 : 0.67;
+      const predicted = classifyBinaryAcidityWithTrainingSet(sample, subset).label;
+
+      if (predicted === "Acidic" && sample.label === "Acidic") acc.tp++;
+      else if (predicted === "Non-Acidic" && sample.label === "Non-Acidic") acc.tn++;
+      else if (predicted === "Acidic" && sample.label === "Non-Acidic") acc.fp++;
+      else acc.fn++;
+
+      return acc;
+    },
+    { tp: 0, tn: 0, fp: 0, fn: 0 }
+  );
 
   return {
-    label,
-    confidence,
-    neighbors: topK.map(({ brand, ph, stabilizationTimeSec, label: sampleLabel }) => ({
-      brand,
-      ph,
-      stabilizationTimeSec,
-      label: sampleLabel,
-    })),
+    key: LOGISTIC_REGRESSION_MODEL_KEY,
+    name: LOGISTIC_REGRESSION_MODEL_NAME,
+    metrics: buildMetrics(matrix),
   };
 }
 
-export function classifyBinaryAcidity(reading: Pick<SensorReading, "ph" | "stabilizationTimeSec">) {
-  return classifyBinaryAcidityWithTrainingSet(reading, mlTrainingSet);
+export function classifyBinaryAcidity(
+  reading: Pick<SensorReading, "ph" | "stabilizationTimeSec">
+) {
+  const prediction = classifyBinaryAcidityWithTrainingSet(reading, mlTrainingSet);
+
+  return {
+    ...prediction,
+    validationMetrics: evaluateTrainingSetLeaveOneOut(),
+  };
 }
 
 function divideSafe(numerator: number, denominator: number) {
@@ -209,40 +341,11 @@ function buildMetrics(matrix: ConfusionMatrix): ClassificationMetrics {
 }
 
 export function evaluateTrainingSetSelfTest(): ClassificationMetrics {
-  const matrix = mlTrainingSet.reduce<ConfusionMatrix>(
-    (acc, sample) => {
-      const predicted = classifyBinaryAcidityWithTrainingSet(sample, mlTrainingSet).label;
-
-      if (predicted === "Acidic" && sample.label === "Acidic") acc.tp++;
-      else if (predicted === "Non-Acidic" && sample.label === "Non-Acidic") acc.tn++;
-      else if (predicted === "Acidic" && sample.label === "Non-Acidic") acc.fp++;
-      else acc.fn++;
-
-      return acc;
-    },
-    { tp: 0, tn: 0, fp: 0, fn: 0 }
-  );
-
-  return buildMetrics(matrix);
+  return evaluateLogisticRegression(mlTrainingSet, "self_test").metrics;
 }
 
 export function evaluateTrainingSetLeaveOneOut(): ClassificationMetrics {
-  const matrix = mlTrainingSet.reduce<ConfusionMatrix>(
-    (acc, sample, index) => {
-      const trainingSubset = mlTrainingSet.filter((_, sampleIndex) => sampleIndex !== index);
-      const predicted = classifyBinaryAcidityWithTrainingSet(sample, trainingSubset).label;
-
-      if (predicted === "Acidic" && sample.label === "Acidic") acc.tp++;
-      else if (predicted === "Non-Acidic" && sample.label === "Non-Acidic") acc.tn++;
-      else if (predicted === "Acidic" && sample.label === "Non-Acidic") acc.fp++;
-      else acc.fn++;
-
-      return acc;
-    },
-    { tp: 0, tn: 0, fp: 0, fn: 0 }
-  );
-
-  return buildMetrics(matrix);
+  return evaluateLogisticRegression(mlTrainingSet, "leave_one_out").metrics;
 }
 
 export function buildAnalysisRecord(
@@ -267,6 +370,8 @@ export function buildAnalysisRecord(
     classification,
     binaryLabel: binary.label,
     mlConfidence: binary.confidence,
+    mlModelKey: binary.modelKey,
+    mlModelName: binary.modelName,
     stabilizationTimeSec: reading.stabilizationTimeSec,
     averageVoltage: reading.averageVoltage,
     samplesCollected: reading.samplesCollected,

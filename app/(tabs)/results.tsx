@@ -1,3 +1,4 @@
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import React, { useEffect, useRef, useState } from "react";
 import {
   Animated,
@@ -7,7 +8,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
@@ -17,7 +17,10 @@ import {
   getNarrativeWithFallback,
   maybeEnrichAnalysisRecordWithLlm,
 } from "@/src/services/aiAnalysisService";
-import { getLatestAnalysis } from "@/src/services/analysisService";
+import {
+  evaluateTrainingSetLeaveOneOut,
+  getLatestAnalysis,
+} from "@/src/services/analysisService";
 import { getLatestStoredAnalysis, saveAnalysisRecord } from "@/src/store/analysisStore";
 import { AnalysisRecord } from "@/src/types/analysis";
 
@@ -296,6 +299,7 @@ export default function ResultsScreen() {
   const tips = getTipRows(latest, narrative.tips);
   const effects = narrative.likelyEffectItems;
   const impacts = narrative.impactItems;
+  const logisticMetrics = evaluateTrainingSetLeaveOneOut();
 
   const bookmarkButton = (
     <TouchableOpacity
@@ -371,6 +375,14 @@ export default function ResultsScreen() {
                 ML label: {latest.binaryLabel}
                 {typeof latest.mlConfidence === "number"
                   ? ` (${Math.round(latest.mlConfidence * 100)}% confidence)`
+                  : ""}
+              </ThemedText>
+            )}
+            {!!latest.mlModelName && (
+              <ThemedText style={r.metaText}>
+                ML model: {latest.mlModelName}
+                {latest.mlModelKey === "logistic_regression"
+                  ? ` · LOOCV F1 ${logisticMetrics.f1Score.toFixed(2)}`
                   : ""}
               </ThemedText>
             )}
