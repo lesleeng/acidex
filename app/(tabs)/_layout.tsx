@@ -26,20 +26,7 @@ export default function TabLayout() {
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
         }}
       />
-      <Tabs.Screen
-        name="dashboard"
-        options={{
-          title: 'dashboard',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="dashboard.icon" color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="history"
-        options={{
-          title: 'history',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="history.icon" color={color} />,
-        }}
-      />
+
       <Tabs.Screen
         name="results"
         options={{
@@ -47,6 +34,23 @@ export default function TabLayout() {
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="result.icon" color={color} />,
         }}
       />
+
+      <Tabs.Screen
+        name="dashboard"
+        options={{
+          title: 'dashboard',
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="dashboard.icon" color={color} />,
+        }}
+      />
+
+      <Tabs.Screen
+        name="history"
+        options={{
+          title: 'history',
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="history.icon" color={color} />,
+        }}
+      />
+
 
     </Tabs>
   );

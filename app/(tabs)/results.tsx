@@ -6,7 +6,6 @@ import {
   View,
 } from "react-native";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import Colors from "@/constants/colors";
@@ -27,386 +26,338 @@ type AnalysisRecord = {
   riskLevel?: "Low Risk" | "Moderate Risk" | "High Risk";
 };
 
+// ─── Classification helpers ───────────────────────────────────────────────────
+
+const CLASSIFICATION_COLORS = {
+  "Highly Acidic": { bg: "#FCDEDE", text: "#8C1A1A", badge: "#E74C3C", dot: "#E74C3C" },
+  "Moderate":      { bg: "#FEF0D6", text: "#7A4A00", badge: "#F39C12", dot: "#F39C12" },
+  "Low Acidic":    { bg: "#DCF0E4", text: "#1A5C34", badge: "#27AE60", dot: "#27AE60" },
+};
+
+const RISK_COLORS = {
+  "High Risk":     { bg: "#FCDEDE", text: "#8C1A1A" },
+  "Moderate Risk": { bg: "#FEF0D6", text: "#7A4A00" },
+  "Low Risk":      { bg: "#DCF0E4", text: "#1A5C34" },
+};
+
+// ─── Content helpers ──────────────────────────────────────────────────────────
+
+function getSummaryText(item: AnalysisRecord): string {
+  if (item.classification === "Highly Acidic")
+    return `Your ${item.coffeeType.toLowerCase()} tested as highly acidic, which may trigger gastric discomfort.`;
+  if (item.classification === "Moderate")
+    return `Your ${item.coffeeType.toLowerCase()} tested as moderately acidic — may cause some discomfort depending on timing.`;
+  return `Your ${item.coffeeType.toLowerCase()} tested as low acidic, generally gentler on the stomach.`;
+}
+
+function getLikelyEffectTitle(item: AnalysisRecord): string {
+  if (item.riskLevel === "High Risk")     return "High likelihood of discomfort";
+  if (item.riskLevel === "Moderate Risk") return "Possible discomfort";
+  return "Lower likelihood of discomfort";
+}
+
+function getLikelyEffectItems(item: AnalysisRecord): string[] {
+  const out: string[] = [`${item.coffeeType} (high acidity coffee)`];
+  if (item.stomachState === "Empty stomach") out.push("Empty stomach (session time)");
+  else if (item.stomachState === "After meal") out.push("After meal (better timing)");
+  if (typeof item.cupsToday === "number")
+    out.push(`${item.cupsToday} cup${item.cupsToday > 1 ? "s" : ""} today (habit)`);
+  return out;
+}
+
+function getAdvisoryText(item: AnalysisRecord): string {
+  if (item.riskLevel === "High Risk")
+    return "Consider reducing intake or drinking after meals to minimize gastric discomfort.";
+  if (item.riskLevel === "Moderate Risk")
+    return "Try improving timing and hydration to lessen possible irritation.";
+  return "Current result suggests lower discomfort risk, but moderation is still recommended.";
+}
+
+function getTips(item: AnalysisRecord): { icon: string; text: string }[] {
+  const base: { icon: string; text: string }[] = [
+    { icon: "food",          text: "Have coffee after meals whenever possible" },
+    { icon: "cup-water",     text: "Stay hydrated: drink water alongside coffee" },
+    { icon: "coffee-outline",text: "Limit intake: keep it to 1–2 cups/day" },
+  ];
+  if (item.classification === "Highly Acidic")
+    base.push({ icon: "coffee-maker-outline", text: "Switch to lower-acidity types like brewed or decaf" });
+  else
+    base.push({ icon: "coffee-maker-outline", text: "Avoid drinking coffee too quickly to reduce irritation" });
+  return base;
+}
+
+function getSafeTimingText(item: AnalysisRecord): string {
+  if (item.stomachState === "Empty stomach")
+    return "Best to drink coffee 30–45 minutes after eating to lessen irritation.";
+  return "Continue drinking coffee after meals for better stomach comfort.";
+}
+
+function getImpactItems(item: AnalysisRecord): string[] {
+  const out: string[] = [`${item.coffeeType} (strongest acids from darkness of roast)`];
+  if (item.stomachState === "Empty stomach") out.push("Empty stomach (magnifies irritation)");
+  if ((item.cupsToday ?? 0) >= 2) out.push("Multiple cups (higher total acidity)");
+  if (out.length < 3) out.push("Brewing method can also affect acidity level");
+  return out;
+}
+
+function getScalePct(item: AnalysisRecord): number {
+  // pH range roughly 4.0–6.0 on our scale; invert so high acid = right
+  const clamped = Math.max(4.0, Math.min(6.0, item.ph));
+  return ((6.0 - clamped) / 2.0) * 100; // 0% = low acid, 100% = high acid
+}
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function SectionCard({
+  title,
+  accent = "cream",
+  children,
+  trailing,
+}: {
+  title: string;
+  accent?: "cream" | "warm" | "sage" | "slate" | "peach";
+  children: React.ReactNode;
+  trailing?: React.ReactNode;
+}) {
+  const accentMap = {
+    cream: { bg: "#FFFAF7", border: "#EDE3DC" },
+    warm:  { bg: "#FDF6F0", border: "#E8D5C4" },
+    sage:  { bg: "#F2F8F4", border: "#C8DFCE" },
+    slate: { bg: "#F2F5F8", border: "#C8D4DF" },
+    peach: { bg: "#FDF5EE", border: "#EDD8C5" },
+  };
+  const col = accentMap[accent];
+  return (
+    <View style={[r.card, { backgroundColor: col.bg, borderColor: col.border }]}>
+      <View style={r.cardHeader}>
+        <ThemedText style={r.cardTitle}>{title}</ThemedText>
+        {trailing ?? <Ionicons name="bookmark-outline" size={17} color="#C4A882" />}
+      </View>
+      {children}
+    </View>
+  );
+}
+
+function InnerBlock({ children }: { children: React.ReactNode }) {
+  return <View style={r.innerBlock}>{children}</View>;
+}
+
+function BulletItem({ text }: { text: string }) {
+  return (
+    <View style={r.bulletRow}>
+      <View style={r.bullet} />
+      <ThemedText style={r.bulletText}>{text}</ThemedText>
+    </View>
+  );
+}
+
+function Tag({ label, bg, color }: { label: string; bg: string; color: string }) {
+  return (
+    <View style={[r.tag, { backgroundColor: bg }]}>
+      <ThemedText style={[r.tagText, { color }]}>{label}</ThemedText>
+    </View>
+  );
+}
+
+// ─── Main Screen ──────────────────────────────────────────────────────────────
+
 export default function ResultsScreen() {
   const coffee = useThemeColor({}, "coffee");
   const text = useThemeColor({}, "text");
 
-  const latest = useMemo(() => {
-    const sorted = [...(mockAnalysisRecords as AnalysisRecord[])].sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  const latest = useMemo<AnalysisRecord | null>(() => {
+    const sorted = [...mockAnalysisRecords].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
     return sorted[0] ?? null;
   }, []);
 
   if (!latest) {
     return (
-      <ThemedView style={styles.emptyScreen}>
-        <ThemedText style={styles.emptyText}>No results yet.</ThemedText>
+      <ThemedView style={r.emptyScreen}>
+        <ThemedText style={r.emptyText}>No results yet.</ThemedText>
       </ThemedView>
     );
   }
 
-  function getBadgeStyle(classification: Classification) {
-    if (classification === "Highly Acidic") return styles.badgeHigh;
-    if (classification === "Moderate") return styles.badgeModerate;
-    return styles.badgeLow;
-  }
-
-  function getSummaryText(item: AnalysisRecord) {
-    if (item.classification === "Highly Acidic") {
-      return `Your ${item.coffeeType.toLowerCase()} tested as highly acidic, which may trigger gastric discomfort.`;
-    }
-
-    if (item.classification === "Moderate") {
-      return `Your ${item.coffeeType.toLowerCase()} tested as moderately acidic, which may still cause discomfort depending on timing and intake.`;
-    }
-
-    return `Your ${item.coffeeType.toLowerCase()} tested as low acidic, which is generally gentler on the stomach.`;
-  }
-
-  function getLikelyEffectTitle(item: AnalysisRecord) {
-    if (item.riskLevel === "High Risk") return "High likelihood of discomfort:";
-    if (item.riskLevel === "Moderate Risk")
-      return "Possible likelihood of discomfort:";
-    return "Lower likelihood of discomfort:";
-  }
-
-  function getLikelyEffectItems(item: AnalysisRecord) {
-    const items: string[] = [];
-
-    items.push(`${item.coffeeType} (high acidity coffee)`);
-
-    if (item.stomachState === "Empty stomach") {
-      items.push("Empty stomach (session time)");
-    } else if (item.stomachState === "After meal") {
-      items.push("After meal (better timing)");
-    }
-
-    if (typeof item.cupsToday === "number") {
-      items.push(
-        `${item.cupsToday} cup${item.cupsToday > 1 ? "s" : ""} today (habit)`
-      );
-    }
-
-    return items;
-  }
-
-  function getAdvisoryText(item: AnalysisRecord) {
-    if (item.riskLevel === "High Risk") {
-      return "Consider reducing intake or drinking after meals to minimize gastric discomfort.";
-    }
-
-    if (item.riskLevel === "Moderate Risk") {
-      return "Try improving timing and hydration to lessen possible irritation.";
-    }
-
-    return "Current result suggests lower discomfort risk, but moderation is still recommended.";
-  }
-
-  function getTips(item: AnalysisRecord) {
-    const tips = [
-      "Have coffee after meals whenever possible",
-      "Stay hydrated: drink water alongside coffee",
-      "Limit intake: keep it to 1-2 cups/day",
-    ];
-
-    if (item.classification === "Highly Acidic") {
-      tips.push("Switch to lower-acidity coffee types like brewed or decaf");
-    } else {
-      tips.push("Avoid drinking coffee too quickly to reduce irritation");
-    }
-
-    return tips;
-  }
-
-  function getSafeTimingText(item: AnalysisRecord) {
-    if (item.stomachState === "Empty stomach") {
-      return "Best to drink coffee 30-45 minutes after eating to lessen irritation.";
-    }
-
-    return "Continue drinking coffee after meals for better stomach comfort.";
-  }
-
-  function getImpactItems(item: AnalysisRecord) {
-    const impacts: string[] = [];
-
-    impacts.push(`${item.coffeeType} (strongest acids from darkness of roast)`);
-
-    if (item.stomachState === "Empty stomach") {
-      impacts.push("Empty stomach (magnifies irritation)");
-    }
-
-    if ((item.cupsToday ?? 0) >= 2) {
-      impacts.push("Multiple cups (higher total acidity)");
-    }
-
-    if (impacts.length < 3) {
-      impacts.push("Brewing method can also affect acidity level");
-    }
-
-    return impacts;
-  }
-
-  function getScaleDotPosition(item: AnalysisRecord): object {
-    if (item.classification === "Highly Acidic") return { right: 22 };
-    if (item.classification === "Moderate") return { left: "50%", marginLeft: -10 };
-    return { left: 22 };
-  }
-
-  const tips = getTips(latest);
-  const effects = getLikelyEffectItems(latest);
-  const impacts = getImpactItems(latest);
+  const clsColor  = CLASSIFICATION_COLORS[latest.classification] ?? CLASSIFICATION_COLORS["Moderate"];
+  const riskColor = RISK_COLORS[latest.riskLevel ?? "Low Risk"]  ?? RISK_COLORS["Low Risk"];
+  const scalePct  = getScalePct(latest);
+  const tips      = getTips(latest);
+  const effects   = getLikelyEffectItems(latest);
+  const impacts   = getImpactItems(latest);
 
   return (
-    <ThemedView style={styles.screen}>
-      <ThemedView
-        style={[
-          styles.header,
-          { backgroundColor: Colors.light.background },
-        ]}
-      >
-
-
-        <View style={styles.headerMiddle}>
-          <ThemedText style={[styles.title, { color: coffee }]}>
-            results.
-          </ThemedText>
-          <ThemedText style={styles.subtitle}>
-            your latest coffee analysis
-          </ThemedText>
-        </View>
-
-      </ThemedView>
-
+    <ThemedView style={r.screen}>
       <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.contentContainer}
+        style={r.scroll}
+        contentContainerStyle={r.content}
         showsVerticalScrollIndicator={false}
       >
-        <ThemedView style={styles.card}>
-          <View style={styles.cardHeader}>
-            <ThemedText style={[styles.cardTitle, { color: text }]}>
-              Acidity Summary
+        <ThemedView
+          style={[
+            r.header,
+            { backgroundColor: Colors.light.background },
+          ]}
+        >
+          <View style={r.headerMiddle}>
+            <ThemedText style={[r.title, { color: coffee }]}>
+              results.
             </ThemedText>
-            <Ionicons name="bookmark-outline" size={20} color="#7F675B" />
+            <ThemedText style={r.subtitle}>
+              your latest coffee analysis
+            </ThemedText>
           </View>
+        </ThemedView>
 
-          <View style={styles.summaryInner}>
-            <View style={styles.summaryTop}>
-              <View style={styles.coffeeIllustrationWrap}>
-                <MaterialCommunityIcons
-                  name="coffee"
-                  size={70}
-                  color={coffee}
-                />
+        {/* ── Acidity Summary ── */}
+        <SectionCard title="Acidity Summary" accent="cream">
+
+          <InnerBlock>
+            {/* Top row: icon + name/pH/badge */}
+            <View style={r.summaryTop}>
+              <View style={r.coffeeIconWrap}>
+                <MaterialCommunityIcons name="coffee" size={52} color="#8B5E3C" />
               </View>
-
-              <View style={styles.summaryTopRight}>
-                <ThemedText style={[styles.coffeeName, { color: text }]}>
-                  {latest.coffeeType}
-                </ThemedText>
-
-                <View style={styles.phAndBadgeRow}>
-                  <ThemedText style={[styles.phBigText, { color: text }]}>
-                    pH {latest.ph.toFixed(1)}
-                  </ThemedText>
-
-                  <View
-                    style={[styles.badge, getBadgeStyle(latest.classification)]}
-                  >
-                    <ThemedText style={styles.badgeText}>
-                      {latest.classification}
-                    </ThemedText>
+              <View style={r.summaryRight}>
+                <ThemedText style={r.coffeeName}>{latest.coffeeType}</ThemedText>
+                <View style={r.phRow}>
+                  <ThemedText style={r.phText}>pH {latest.ph.toFixed(1)}</ThemedText>
+                  <View style={[r.badge, { backgroundColor: clsColor.badge }]}>
+                    <ThemedText style={r.badgeText}>{latest.classification}</ThemedText>
                   </View>
+                </View>
+                {/* risk tag */}
+                <View style={[r.riskTag, { backgroundColor: riskColor.bg }]}>
+                  <ThemedText style={[r.riskTagText, { color: riskColor.text }]}>
+                    {latest.riskLevel}
+                  </ThemedText>
                 </View>
               </View>
             </View>
 
-            <View style={styles.scaleBlock}>
-              <View style={styles.scaleTopLabels}>
-                <ThemedText style={styles.scaleLabelText}>Low</ThemedText>
-                <ThemedText style={styles.scaleLabelText}>pH 5.2</ThemedText>
-                <ThemedText style={[styles.scaleLabelText, { color: "#DB6E66" }]}>
-                  High
-                </ThemedText>
+            {/* Acidity scale */}
+            <View style={r.scaleBlock}>
+              <View style={r.scaleTopLabels}>
+                <ThemedText style={r.scaleLabelSmall}>Low acid</ThemedText>
+                <ThemedText style={r.scaleLabelSmall}>High acid</ThemedText>
               </View>
-
-              <View style={styles.scaleBar}>
-                <View style={[styles.scaleSegment, { backgroundColor: "#C9D7C4" }]} />
-                <View style={[styles.scaleSegment, { backgroundColor: "#E7CFAB" }]} />
-                <View style={[styles.scaleSegment, { backgroundColor: "#E49B92" }]} />
-                <View style={[styles.scaleDot, getScaleDotPosition(latest)]} />
+              <View style={r.scaleBar}>
+                <View style={[r.scaleSegment, { backgroundColor: "#A8C69F" }]} />
+                <View style={[r.scaleSegment, { backgroundColor: "#E7CFAB" }]} />
+                <View style={[r.scaleSegment, { backgroundColor: "#E49B92" }]} />
+                {/* dot positioned by %  */}
+                <View style={[r.scaleDot, { left: `${Math.min(scalePct, 88)}%` as any }]} />
               </View>
-
-              <View style={styles.scaleBottomLabels}>
-                <ThemedText style={styles.scaleBottomText}>pH 5.2</ThemedText>
-                <ThemedText style={styles.scaleBottomText}>Moderate</ThemedText>
-                <ThemedText style={styles.scaleBottomText}>
-                  pH {latest.ph.toFixed(1)}
-                </ThemedText>
+              <View style={r.scaleBottomLabels}>
+                <ThemedText style={r.scaleBottomSmall}>pH 6.0+</ThemedText>
+                <ThemedText style={r.scaleBottomSmall}>pH {latest.ph.toFixed(1)}</ThemedText>
+                <ThemedText style={r.scaleBottomSmall}>pH 4.0</ThemedText>
               </View>
             </View>
 
-            <ThemedText style={styles.summaryText}>
-              {getSummaryText(latest)}
-            </ThemedText>
-          </View>
-        </ThemedView>
+            <ThemedText style={r.summaryText}>{getSummaryText(latest)}</ThemedText>
+          </InnerBlock>
 
-        <ThemedView style={styles.card}>
-          <View style={styles.cardHeader}>
-            <ThemedText style={[styles.cardTitle, { color: text }]}>
-              Likely Effects & Advisory
-            </ThemedText>
-            <Ionicons name="bookmark-outline" size={20} color="#7F675B" />
+          {/* timestamp + quick tags */}
+          <View style={r.tagRow}>
+            <Tag label={new Date(latest.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+              bg="#F4EEEA" color="#8B6A55" />
+            {latest.stomachState && (
+              <Tag label={latest.stomachState} bg="#F4EEEA" color="#8B6A55" />
+            )}
           </View>
+        </SectionCard>
 
-          <View style={styles.infoSoftCard}>
-            <View style={styles.warningRow}>
-              <Ionicons name="warning-outline" size={22} color="#C38C49" />
-              <ThemedText style={[styles.warningTitle, { color: text }]}>
-                {getLikelyEffectTitle(latest)}
-              </ThemedText>
+        {/* ── Likely Effects ── */}
+        <SectionCard title="Likely Effects & Advisory" accent="peach">
+          <InnerBlock>
+            <View style={r.warningRow}>
+              <Ionicons name="warning-outline" size={17} color="#C38C49" />
+              <ThemedText style={r.warningTitle}>{getLikelyEffectTitle(latest)}</ThemedText>
             </View>
+            {effects.map((item, i) => <BulletItem key={i} text={item} />)}
+            <View style={r.divider} />
+            <ThemedText style={r.advisoryText}>{getAdvisoryText(latest)}</ThemedText>
+          </InnerBlock>
+        </SectionCard>
 
-            {effects.map((item, index) => (
-              <View key={index} style={styles.bulletRow}>
-                <View style={styles.bulletDot} />
-                <ThemedText style={styles.bulletText}>{item}</ThemedText>
+        {/* ── Tips ── */}
+        <SectionCard title="Tips to Minimize Discomfort" accent="sage">
+          <InnerBlock>
+            {tips.map((tip, i) => (
+              <View key={i} style={[r.tipRow, i < tips.length - 1 && r.tipRowBorder]}>
+                <View style={r.tipIconCircle}>
+                  <MaterialCommunityIcons
+                    name={tip.icon as any}
+                    size={16}
+                    color="#6B8F76"
+                  />
+                </View>
+                <ThemedText style={r.tipText}>{tip.text}</ThemedText>
               </View>
             ))}
+          </InnerBlock>
+        </SectionCard>
 
-            <ThemedText style={styles.advisoryText}>
-              {getAdvisoryText(latest)}
-            </ThemedText>
-          </View>
-        </ThemedView>
-
-        <ThemedView style={styles.card}>
-          <View style={styles.cardHeader}>
-            <ThemedText style={[styles.cardTitle, { color: text }]}>
-              Tips to Minimize Discomfort
-            </ThemedText>
-            <Ionicons name="bookmark-outline" size={20} color="#7F675B" />
-          </View>
-
-          <View style={styles.infoSoftCard}>
-            {tips.map((tip, index) => (
-              <View key={index} style={styles.tipRow}>
-                <MaterialCommunityIcons
-                  name={
-                    index === 0
-                      ? "food"
-                      : index === 1
-                      ? "cup-water"
-                      : index === 2
-                      ? "coffee-outline"
-                      : "coffee-maker-outline"
-                  }
-                  size={22}
-                  color="#8A6F63"
-                />
-                <ThemedText style={styles.tipText}>{tip}</ThemedText>
-              </View>
-            ))}
-          </View>
-        </ThemedView>
-
-        <ThemedView style={styles.card}>
-          <View style={styles.cardHeader}>
-            <ThemedText style={[styles.cardTitle, { color: text }]}>
-              Safe Coffee Timing
-            </ThemedText>
-            <Ionicons name="ellipsis-horizontal" size={20} color="#7F675B" />
-          </View>
-
-          <View style={styles.timingRow}>
-            <Ionicons name="time-outline" size={24} color="#7F675B" />
-            <ThemedText style={styles.timingText}>
-              {getSafeTimingText(latest)}
-            </ThemedText>
-          </View>
-        </ThemedView>
-
-        <ThemedView style={styles.card}>
-          <View style={styles.cardHeader}>
-            <ThemedText style={[styles.cardTitle, { color: text }]}>
-              What’s Coffee Acidity?
-            </ThemedText>
-            <Ionicons name="bookmark-outline" size={20} color="#7F675B" />
-          </View>
-
-          <ThemedText style={[styles.questionTitle, { color: text }]}>
-            What is coffee acidity?
-          </ThemedText>
-
-          <ThemedText style={styles.infoParagraph}>
-            Coffee acidity refers to the acidic content of the drink, measured
-            as pH. Lower pH means higher acidity.
-          </ThemedText>
-
-          <View style={styles.innerInfoCard}>
-            <View style={styles.cardHeader}>
-              <ThemedText style={[styles.questionTitle, { color: text }]}>
-                What impacts acidity?
-              </ThemedText>
-              <Ionicons name="bookmark-outline" size={20} color="#7F675B" />
+        {/* ── Safe Timing ── */}
+        <SectionCard title="Safe Coffee Timing" accent="slate"
+          trailing={<Ionicons name="time-outline" size={17} color="#5B7FA6" />}>
+          <View style={r.timingRow}>
+            <View style={r.timingIconCircle}>
+              <Ionicons name="time-outline" size={16} color="#5B7FA6" />
             </View>
-
-            {impacts.map((item, index) => (
-              <View key={index} style={styles.bulletRow}>
-                <View style={styles.dotBullet} />
-                <ThemedText style={styles.bulletText}>{item}</ThemedText>
-              </View>
-            ))}
+            <ThemedText style={r.timingText}>{getSafeTimingText(latest)}</ThemedText>
           </View>
-        </ThemedView>
+        </SectionCard>
 
-        <TouchableOpacity activeOpacity={0.85} style={styles.okayButton}>
-          <ThemedText style={[styles.okayButtonText, { color: coffee }]}>
-            Okay
+        {/* ── What's Acidity ── */}
+        <SectionCard title="What's Coffee Acidity?" accent="warm">
+          <ThemedText style={r.infoParagraph}>
+            Coffee acidity refers to the acidic content of the drink, measured as pH. Lower pH means higher acidity.
           </ThemedText>
-        </TouchableOpacity>
+          <InnerBlock>
+            <ThemedText style={r.innerBlockTitle}>What impacts acidity?</ThemedText>
+            {impacts.map((item, i) => <BulletItem key={i} text={item} />)}
+          </InnerBlock>
+        </SectionCard>
+
       </ScrollView>
     </ThemedView>
   );
 }
 
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: "#F7F2F0",
-  },
+// ─── Styles ───────────────────────────────────────────────────────────────────
 
-  emptyScreen: {
-    flex: 1,
-    backgroundColor: "#F7F2F0",
-    justifyContent: "center",
-    alignItems: "center",
-  },
+const r = StyleSheet.create({
+  screen:  { flex: 1, backgroundColor: "#F6F1EC" },
+  scroll:  { flex: 1 },
+  content: { paddingBottom: 40 },
 
-  emptyText: {
-    fontSize: 15,
-    color: "#8A6F63",
-  },
+  emptyScreen: { flex: 1, backgroundColor: "#F6F1EC", justifyContent: "center", alignItems: "center" },
+  emptyText:   { fontSize: 13, color: "#8A6F63" },
 
+  // header — matches dashboard
   header: {
-    flexDirection: "row",
+    flexDirection: "row", 
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingTop: 50,
-    paddingBottom: 14,
-  },
-
-  headerSide: {
-    flex: 1,
     justifyContent: "center",
-    alignItems: "flex-start",
+    paddingHorizontal: 16, 
+    paddingTop: 50, 
+    paddingBottom: 14,
+    backgroundColor: Colors.light.background,
   },
-
-  headerSideRight: {
-    alignItems: "flex-end",
+  title: {
+    fontSize: 18,
+    fontWeight: "700",
+    lineHeight: 20,
+    textAlign: "center",
+    paddingTop: 1,
+  },
+  subtitle: {
+    fontSize: 12,
+    opacity: 0.6,
+    textAlign: "center",
   },
 
   headerMiddle: {
@@ -415,303 +366,116 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
-  brand: {
-    fontSize: 18,
-    fontWeight: "700",
-    lineHeight: 20,
-    textAlign: "center",
-    marginBottom: 2,
-  },
 
-
-  title: {
-    fontSize: 18,
-    fontWeight: "700",
-    lineHeight: 20,
-    textAlign: "center",
-    paddingTop: 1,
-  },
-
-  subtitle: {
-    fontSize: 12,
-    opacity: 0.6,
-    textAlign: "center",
-  },
-
-
-  avatarPlaceholder: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "#231815",
-  },
-
-  container: {
-    flex: 1,
-  },
-
-  contentContainer: {
-    paddingHorizontal: 14,
-    paddingBottom: 24,
-  },
-
+  // cards — same language as dashboard
   card: {
-    backgroundColor: "#FFF",
-    borderRadius: 22,
-    padding: 16,
-    marginTop: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 2,
+    borderRadius: 20, borderWidth: 1,
+    padding: 16, marginHorizontal: 16, marginTop: 14,
   },
-
   cardHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 14,
+    flexDirection: "row", alignItems: "center",
+    justifyContent: "space-between", marginBottom: 12,
+  },
+  cardTitle: { fontSize: 14, fontWeight: "700", color: "#2E211B" },
+
+  // inner tinted block
+  innerBlock: {
+    backgroundColor: "rgba(139,94,60,0.07)",
+    borderRadius: 14, padding: 14,
+  },
+  innerBlockTitle: {
+    fontSize: 13, fontWeight: "700", color: "#2E211B", marginBottom: 10,
   },
 
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: "700",
+  // summary
+  summaryTop: { flexDirection: "row", alignItems: "center", marginBottom: 16 },
+  coffeeIconWrap: {
+    width: 80, height: 80, borderRadius: 40,
+    backgroundColor: "rgba(139,94,60,0.1)",
+    alignItems: "center", justifyContent: "center", marginRight: 14,
   },
-
-  summaryInner: {
-    backgroundColor: "#F4ECE9",
-    borderRadius: 18,
-    padding: 14,
-  },
-
-  summaryTop: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 16,
-  },
-
-  coffeeIllustrationWrap: {
-    width: 110,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  summaryTopRight: {
-    flex: 1,
-  },
-
-  coffeeName: {
-    fontSize: 18,
-    fontWeight: "700",
-    marginBottom: 10,
-  },
-
-  phAndBadgeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    flexWrap: "wrap",
-    gap: 10,
-  },
-
-  phBigText: {
-    fontSize: 18,
-    fontWeight: "500",
-  },
-
+  summaryRight: { flex: 1 },
+  coffeeName:   { fontSize: 15, fontWeight: "700", color: "#2E211B", marginBottom: 6 },
+  phRow:        { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 6 },
+  phText:       { fontSize: 15, fontWeight: "600", color: "#3C2C24" },
   badge: {
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4,
   },
-
-  badgeHigh: {
-    backgroundColor: "#D97870",
+  badgeText: { color: "#FFF", fontSize: 11, fontWeight: "700" },
+  riskTag: {
+    alignSelf: "flex-start", borderRadius: 999,
+    paddingHorizontal: 10, paddingVertical: 3,
   },
+  riskTagText: { fontSize: 11, fontWeight: "600" },
 
-  badgeModerate: {
-    backgroundColor: "#E4BA67",
-  },
-
-  badgeLow: {
-    backgroundColor: "#A8C69F",
-  },
-
-  badgeText: {
-    color: "#FFF",
-    fontSize: 13,
-    fontWeight: "700",
-  },
-
-  scaleBlock: {
-    marginBottom: 14,
-  },
-
-  scaleTopLabels: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 8,
-  },
-
-  scaleLabelText: {
-    fontSize: 13,
-    color: "#8A6F63",
-  },
-
+  // scale
+  scaleBlock:      { marginBottom: 14 },
+  scaleTopLabels:  { flexDirection: "row", justifyContent: "space-between", marginBottom: 6 },
+  scaleLabelSmall: { fontSize: 11, color: "#A08880" },
   scaleBar: {
-    flexDirection: "row",
-    height: 16,
-    borderRadius: 999,
-    overflow: "hidden",
-    position: "relative",
-    marginBottom: 8,
+    flexDirection: "row", height: 12, borderRadius: 999,
+    overflow: "hidden", position: "relative", marginBottom: 6,
   },
-
-  scaleSegment: {
-    flex: 1,
-  },
-
+  scaleSegment:    { flex: 1 },
   scaleDot: {
-    position: "absolute",
-    top: -2,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: "#DB6E66",
-    borderWidth: 2,
-    borderColor: "#CC5E56",
+    position: "absolute", top: -3,
+    width: 18, height: 18, borderRadius: 9,
+    backgroundColor: "#E74C3C",
+    borderWidth: 2, borderColor: "#FFF",
   },
+  scaleBottomLabels: { flexDirection: "row", justifyContent: "space-between" },
+  scaleBottomSmall:  { fontSize: 10, color: "#A08880" },
+  summaryText:       { fontSize: 13, lineHeight: 20, color: "#4B3A33", marginTop: 4 },
 
-  scaleBottomLabels: {
-    flexDirection: "row",
-    justifyContent: "space-between",
+  // tags row
+  tagRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 12 },
+  tag:    { borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4 },
+  tagText:{ fontSize: 11, fontWeight: "600" },
+
+  // bullets
+  bulletRow: { flexDirection: "row", alignItems: "flex-start", marginBottom: 8 },
+  bullet: {
+    width: 5, height: 5, borderRadius: 2.5,
+    backgroundColor: "#C4905A", marginTop: 8, marginRight: 10, flexShrink: 0,
   },
+  bulletText: { flex: 1, fontSize: 13, lineHeight: 20, color: "#4E3D35" },
 
-  scaleBottomText: {
-    fontSize: 13,
-    color: "#7E675B",
-  },
+  // warning row
+  warningRow:  { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 10 },
+  warningTitle:{ fontSize: 13, fontWeight: "700", color: "#2E211B" },
+  divider:     { height: 1, backgroundColor: "rgba(139,94,60,0.15)", marginVertical: 10 },
+  advisoryText:{ fontSize: 13, lineHeight: 20, color: "#4B3A33" },
 
-  summaryText: {
-    fontSize: 16,
-    lineHeight: 24,
-    color: "#4B3A33",
-  },
-
-  infoSoftCard: {
-    backgroundColor: "#F4ECE9",
-    borderRadius: 18,
-    padding: 14,
-  },
-
-  warningRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-
-  warningTitle: {
-    fontSize: 17,
-    fontWeight: "700",
-    marginLeft: 10,
-  },
-
-  bulletRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    marginBottom: 10,
-  },
-
-  bulletDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: "#C9A191",
-    marginTop: 8,
-    marginRight: 10,
-  },
-
-  dotBullet: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "#B88B76",
-    marginTop: 8,
-    marginRight: 10,
-  },
-
-  bulletText: {
-    flex: 1,
-    fontSize: 15,
-    lineHeight: 22,
-    color: "#4E3D35",
-  },
-
-  advisoryText: {
-    marginTop: 6,
-    fontSize: 15,
-    lineHeight: 24,
-    color: "#4B3A33",
-  },
-
+  // tips
   tipRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    marginBottom: 14,
+    flexDirection: "row", alignItems: "center", gap: 12,
+    paddingVertical: 10,
   },
+  tipRowBorder: { borderBottomWidth: 1, borderBottomColor: "rgba(104,143,118,0.2)" },
+  tipIconCircle: {
+    width: 30, height: 30, borderRadius: 15,
+    backgroundColor: "rgba(104,143,118,0.15)",
+    alignItems: "center", justifyContent: "center", flexShrink: 0,
+  },
+  tipText: { flex: 1, fontSize: 13, lineHeight: 20, color: "#4E3D35" },
 
-  tipText: {
-    flex: 1,
-    marginLeft: 12,
-    fontSize: 16,
-    lineHeight: 24,
-    color: "#4E3D35",
+  // timing
+  timingRow: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
+  timingIconCircle: {
+    width: 30, height: 30, borderRadius: 15,
+    backgroundColor: "rgba(91,127,166,0.15)",
+    alignItems: "center", justifyContent: "center", flexShrink: 0,
   },
+  timingText: { flex: 1, fontSize: 13, lineHeight: 20, color: "#4E3D35" },
 
-  timingRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-  },
+  // info paragraph
+  infoParagraph: { fontSize: 13, lineHeight: 20, color: "#4B3A33", marginBottom: 12 },
 
-  timingText: {
-    flex: 1,
-    marginLeft: 12,
-    fontSize: 16,
-    lineHeight: 24,
-    color: "#4E3D35",
-  },
-
-  questionTitle: {
-    fontSize: 17,
-    fontWeight: "700",
-    marginBottom: 10,
-  },
-
-  infoParagraph: {
-    fontSize: 16,
-    lineHeight: 25,
-    color: "#4B3A33",
-    marginBottom: 16,
-  },
-
-  innerInfoCard: {
-    backgroundColor: "#F4ECE9",
-    borderRadius: 18,
-    padding: 14,
-  },
-
-  okayButton: {
-    marginTop: 14,
-    marginBottom: 18,
-    backgroundColor: "#F4ECE9",
-    borderRadius: 999,
-    paddingVertical: 14,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  okayButtonText: {
-    fontSize: 18,
-    fontWeight: "600",
-  },
+  // // okay button
+  // okayButton: {
+  //   marginHorizontal: 16, marginTop: 14,
+  //   backgroundColor: "#4A3728", borderRadius: 999,
+  //   paddingVertical: 14, alignItems: "center",
+  // },
+  // okayButtonText: { fontSize: 15, fontWeight: "600", color: "#FFF" },
 });

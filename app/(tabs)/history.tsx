@@ -142,7 +142,7 @@ export default function HistoryScreen() {
           <ThemedText style={[styles.cardDate, { color: text }]}>
             {formatCardDate(item.createdAt)}
           </ThemedText>
-          <Ionicons name="ellipsis-horizontal" size={18} color="#8A6F63" />
+          <Ionicons name="chevron-down" size={18} color="#8A6F63" />
         </View>
 
         <View style={styles.cardBodyRow}>
@@ -178,91 +178,98 @@ export default function HistoryScreen() {
 
   function renderExpandedCard(item: AnalysisRecord) {
     return (
-      <ThemedView key={item.id} style={styles.expandedCard}>
-        <View style={styles.cardTopRow}>
-          <ThemedText style={[styles.expandedDate, { color: text }]}>
-            {formatDetailDate(item.createdAt)}
-          </ThemedText>
-          <Ionicons name="ellipsis-horizontal" size={18} color="#8A6F63" />
-        </View>
-
-        <View style={styles.expandedMainBlock}>
-          <View style={styles.expandedRow}>
-            <MaterialCommunityIcons name="coffee-outline" size={22} color={coffee} />
-            <ThemedText style={[styles.expandedCoffeeName, { color: text }]}>
-              {item.coffeeType}
+      <TouchableOpacity
+        key={item.id}
+        activeOpacity={0.9}
+        onPress={() => setExpandedId(null)}
+      >
+        <ThemedView style={styles.expandedCard}>
+          <View style={styles.cardTopRow}>
+            <ThemedText style={[styles.expandedDate, { color: text }]}>
+              {formatDetailDate(item.createdAt)}
             </ThemedText>
+            <Ionicons name="chevron-up" size={18} color="#8A6F63" />
           </View>
 
-          <View style={styles.expandedRow}>
-            <MaterialCommunityIcons name="flag-variant-outline" size={18} color="#8A6F63" />
-            <ThemedText style={styles.subInfoText}>{getRoastLabel(item)}</ThemedText>
-          </View>
+          <View style={styles.expandedMainBlock}>
+            <View style={styles.expandedRow}>
+              <MaterialCommunityIcons name="coffee-outline" size={22} color={coffee} />
+              <ThemedText style={[styles.expandedCoffeeName, { color: text }]}>
+                {item.coffeeType}
+              </ThemedText>
+            </View>
 
-          <View style={styles.phBadgeRow}>
-            <ThemedText style={[styles.expandedPh, { color: text }]}>
-              pH {item.ph.toFixed(1)}
-            </ThemedText>
+            <View style={styles.expandedRow}>
+              <MaterialCommunityIcons name="flag-variant-outline" size={18} color="#8A6F63" />
+              <ThemedText style={styles.subInfoText}>{getRoastLabel(item)}</ThemedText>
+            </View>
 
-            <View style={[styles.badge, getBadgeStyle(item.classification)]}>
-              <ThemedText style={styles.badgeText}>{item.classification}</ThemedText>
+            <View style={styles.phBadgeRow}>
+              <ThemedText style={[styles.expandedPh, { color: text }]}>
+                pH {item.ph.toFixed(1)}
+              </ThemedText>
+
+              <View style={[styles.badge, getBadgeStyle(item.classification)]}>
+                <ThemedText style={styles.badgeText}>{item.classification}</ThemedText>
+              </View>
             </View>
           </View>
-        </View>
 
-        <View style={styles.advisoryCard}>
-          <View style={styles.advisoryHeader}>
-            <Ionicons name="warning-outline" size={20} color="#C28A4B" />
-            <ThemedText style={[styles.advisoryTitle, { color: text }]}>
-              Health Advisory
+          <View style={styles.advisoryCard}>
+            <View style={styles.advisoryHeader}>
+              <Ionicons name="warning-outline" size={20} color="#C28A4B" />
+              <ThemedText style={[styles.advisoryTitle, { color: text }]}>
+                Health Advisory
+              </ThemedText>
+            </View>
+
+            <ThemedText style={styles.advisoryBody}>
+              {getHealthAdvisory(item)}
             </ThemedText>
           </View>
 
-          <ThemedText style={styles.advisoryBody}>
-            {getHealthAdvisory(item)}
-          </ThemedText>
-        </View>
+          <View style={styles.notesSection}>
+            <ThemedText style={[styles.notesTitle, { color: text }]}>
+              Personal Notes
+            </ThemedText>
+            <ThemedText style={styles.notesText}>
+              • {item.note || "No notes added."}
+            </ThemedText>
+          </View>
 
-        <View style={styles.notesSection}>
-          <ThemedText style={[styles.notesTitle, { color: text }]}>
-            Personal Notes
-          </ThemedText>
-          <ThemedText style={styles.notesText}>
-            • {item.note || "No notes added."}
-          </ThemedText>
-        </View>
-
-        <TouchableOpacity activeOpacity={0.85} style={styles.csvButton}>
-          <ThemedText style={[styles.csvButtonText, { color: coffee }]}>
-            Download CSV
-          </ThemedText>
-        </TouchableOpacity>
-      </ThemedView>
+          <TouchableOpacity activeOpacity={0.85} style={styles.csvButton}>
+            <ThemedText style={[styles.csvButtonText, { color: coffee }]}>
+              Download CSV
+            </ThemedText>
+          </TouchableOpacity>
+        </ThemedView>
+      </TouchableOpacity>
     );
   }
 
   return (
     <ThemedView style={styles.screen}>
-      <ThemedView
-        style={[
-          styles.header,
-          { backgroundColor: Colors.light.background },
-        ]}
-      >
-
-        <View style={styles.headerMiddle}>
-          <ThemedText style={[styles.title, { color: coffee }]}>
-            history.
-          </ThemedText>
-          <ThemedText style={styles.subtitle}>your full analysis log</ThemedText>
-        </View>
-      </ThemedView>
-
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
       >
+        <ThemedView
+          style={[
+            styles.header,
+            { backgroundColor: Colors.light.background },
+          ]}
+        >
+          <View style={styles.headerMiddle}>
+            <ThemedText style={[styles.title, { color: coffee }]}>
+              history.
+            </ThemedText>
+            <ThemedText style={styles.subtitle}>
+              your full analysis log
+            </ThemedText>
+          </View>
+        </ThemedView>
+
         <ThemedView style={styles.searchCard}>
           <View style={styles.searchRow}>
             <Ionicons name="search" size={20} color="#8A6F63" />
@@ -273,13 +280,13 @@ export default function HistoryScreen() {
               placeholderTextColor="#A08C82"
               style={styles.searchInput}
             />
-            <Ionicons name="ellipsis-horizontal" size={18} color="#8A6F63" />
           </View>
 
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.filterRow}
+            style={styles.filterScroll}
           >
             {FILTERS.map((filter) => {
               const isActive = selectedFilter === filter;
@@ -378,6 +385,7 @@ const styles = StyleSheet.create({
 
   container: {
     flex: 1,
+    backgroundColor: Colors.light.background,
   },
 
   contentContainer: {
@@ -388,7 +396,6 @@ const styles = StyleSheet.create({
   searchCard: {
     backgroundColor: "#F4ECE9",
     borderRadius: 22,
-    padding: 12,
     marginTop: 8,
     marginBottom: 14,
   },
@@ -396,10 +403,25 @@ const styles = StyleSheet.create({
   searchRow: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#F7F2F0",
+    backgroundColor: "#FFF",
     borderRadius: 18,
     paddingHorizontal: 14,
     paddingVertical: 12,
+    marginTop: 8,
+    marginHorizontal: 0,
+    marginBottom: 14,
+    borderColor: "#E0D1CB",
+    borderWidth: 1,
+    // shadowColor: "#000",
+    // shadowOffset: { width: 0, height: 2 },
+    // shadowOpacity: 0.1,
+    // shadowRadius: 4,
+    // elevation: 5,
+  },
+  
+  filterScroll: {
+    marginHorizontal: 0,
+    marginBottom: 14,
   },
 
   searchInput: {
@@ -411,7 +433,7 @@ const styles = StyleSheet.create({
   },
 
   filterRow: {
-    paddingTop: 12,
+    paddingTop: 2,
     paddingBottom: 2,
   },
 

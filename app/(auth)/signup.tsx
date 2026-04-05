@@ -230,6 +230,7 @@ export default function SignUpScreen() {
                   },
                 ]}
               >
+                username
               </Animated.Text>
               <TextInput
                 style={[
@@ -284,7 +285,6 @@ export default function SignUpScreen() {
                   onFocus={() => setPasswordFocused(true)}
                   onBlur={() => setPasswordFocused(false)}
                 />
-                {/* ✅ SVG used as component, not inside expo-image */}
                 <TouchableOpacity
                   onPress={() => setShowPassword(!showPassword)}
                   style={styles.eyeButton}
@@ -330,16 +330,19 @@ export default function SignUpScreen() {
             </View>
           </View>
 
+          {/* ✅ FIXED: No TouchableOpacity nested inside Text */}
           <View style={styles.termsContainer}>
-            <Text style={styles.termsText}>
-              by signing up, you agree to our <TouchableOpacity onPress={() => router.push('/terms')}>
+            <Text style={styles.termsText}>by signing up, you agree to our </Text>
+            <TouchableOpacity onPress={() => router.push('/terms')}>
               <Text style={styles.termsLink}>terms of use</Text>
-              </TouchableOpacity>
-              {'\n'}and <TouchableOpacity onPress={() => router.push('/policy')}>
-              <Text style={styles.termsLink}>privacy policy</Text>.
-              </TouchableOpacity>
-            </Text>
+            </TouchableOpacity>
+            <Text style={styles.termsText}> and </Text>
+            <TouchableOpacity onPress={() => router.push('/policy')}>
+              <Text style={styles.termsLink}>privacy policy</Text>
+            </TouchableOpacity>
+            <Text style={styles.termsText}>.</Text>
           </View>
+
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -480,7 +483,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  termsContainer: { marginTop: 5 },
+  termsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 5,
+  },
   termsText: { textAlign: 'center', fontSize: 13, color: '#999' },
-  termsLink: { fontSize: 12, textDecorationLine: 'underline' },
+  termsLink: { fontSize: 13, color: '#999', textDecorationLine: 'underline' },
 })
