@@ -8,8 +8,9 @@ export const mockAnalysisRecords: AnalysisRecord[] = [
     ph: 4.7,
     classification: "Highly Acidic",
     note: "Strong and sharp taste",
-    stomachState: "Empty stomach",
+    stomachState: "empty stomach",
     riskLevel: "High Risk",
+    cupsToday: undefined
   },
   {
     id: "2",
@@ -18,8 +19,9 @@ export const mockAnalysisRecords: AnalysisRecord[] = [
     ph: 5.0,
     classification: "Moderate",
     note: "Balanced",
-    stomachState: "After meal",
+    stomachState: "after meal",
     riskLevel: "Low Risk",
+    cupsToday: undefined
   },
   {
     id: "3",
@@ -28,8 +30,9 @@ export const mockAnalysisRecords: AnalysisRecord[] = [
     ph: 4.9,
     classification: "Moderate",
     note: "Smooth",
-    stomachState: "After meal",
+    stomachState: "after meal",
     riskLevel: "Low Risk",
+    cupsToday: undefined
   },
   {
     id: "4",
@@ -38,8 +41,9 @@ export const mockAnalysisRecords: AnalysisRecord[] = [
     ph: 5.2,
     classification: "Moderate",
     note: "Slightly mild",
-    stomachState: "Empty stomach",
+    stomachState: "empty stomach",
     riskLevel: "Moderate Risk",
+    cupsToday: undefined
   },
   {
     id: "5",
@@ -48,8 +52,9 @@ export const mockAnalysisRecords: AnalysisRecord[] = [
     ph: 4.6,
     classification: "Highly Acidic",
     note: "Very acidic",
-    stomachState: "Empty stomach",
+    stomachState: "empty stomach",
     riskLevel: "High Risk",
+    cupsToday: undefined
   },
   {
     id: "6",
@@ -58,8 +63,9 @@ export const mockAnalysisRecords: AnalysisRecord[] = [
     ph: 5.1,
     classification: "Moderate",
     note: "Creamy",
-    stomachState: "After meal",
+    stomachState: "after meal",
     riskLevel: "Low Risk",
+    cupsToday: undefined
   },
   {
     id: "7",
@@ -68,8 +74,9 @@ export const mockAnalysisRecords: AnalysisRecord[] = [
     ph: 5.3,
     classification: "Low Acidic",
     note: "Less acidic",
-    stomachState: "After meal",
+    stomachState: "after meal",
     riskLevel: "Low Risk",
+    cupsToday: undefined
   },
   {
     id: "8",
@@ -78,8 +85,9 @@ export const mockAnalysisRecords: AnalysisRecord[] = [
     ph: 4.8,
     classification: "Highly Acidic",
     note: "Bit bright",
-    stomachState: "Empty stomach",
+    stomachState: "empty stomach",
     riskLevel: "Moderate Risk",
+    cupsToday: undefined
   },
   {
     id: "9",
@@ -88,7 +96,8 @@ export const mockAnalysisRecords: AnalysisRecord[] = [
     ph: 4.9,
     classification: "Moderate",
     note: "Good for afternoon",
-    stomachState: "After meal",
+    stomachState: "after meal",
     riskLevel: "Low Risk",
+    cupsToday: undefined
   },
 ];

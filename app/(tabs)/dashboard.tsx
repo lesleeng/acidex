@@ -104,11 +104,11 @@ function getSummaryInsights(entries: AnalysisRecord[]): string[] {
   );
   const pct  = Math.round((acidic.length / entries.length) * 100);
   const risk = entries.filter(
-    (e) => e.stomachState === "Empty stomach" && e.classification === "Highly Acidic"
+    (e) => e.stomachState === "empty stomach" && e.classification === "Highly Acidic"
   ).length;
   return [
     `${pct}% of your entries were "Moderate" or "Highly Acidic".`,
-    `"Empty stomach" + high acidity showed ${risk} higher-risk log${risk !== 1 ? "s" : ""}.`,
+    `"empty stomach" + high acidity showed ${risk} higher-risk log${risk !== 1 ? "s" : ""}.`,
   ];
 }
 

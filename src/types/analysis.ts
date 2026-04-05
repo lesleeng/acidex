@@ -12,13 +12,14 @@ export type PHClassification =
 export type RiskLevel = "Low Risk" | "Moderate Risk" | "High Risk";
 
 export interface AnalysisRecord {
+  cupsToday: any;
   id: string;
   createdAt: string;
   coffeeType: string;
   ph: number;
   classification: PHClassification;
   note?: string;
-  stomachState?: "Empty stomach" | "After meal";
+  stomachState?: "empty stomach" | "after meal";
   riskLevel?: RiskLevel;
 }
 
