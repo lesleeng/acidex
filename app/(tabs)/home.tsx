@@ -16,6 +16,15 @@ import { useRouter } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { Ionicons } from "@expo/vector-icons";
+import { hasUsbDevice } from "@/src/services/usbService";
+import { readSensorData } from "@/src/services/sensorService";
+import type { ArduinoReadProgress } from "@/src/services/usbService";
+import { saveAnalysisRecord } from "@/src/store/analysisStore";
+import {
+  buildRuleBasedNarrative,
+  classifyRiskLevel,
+} from "@/src/services/analysisService";
+import type { AnalysisRecord } from "@/src/types/analysis";
 
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
@@ -101,8 +110,8 @@ const factsData = [
 const loopedFacts = [...factsData, ...factsData, ...factsData];
 
 type FactType = (typeof factsData)[0];
-type AnalyzeStatus = "idle" | "no-device" | "analyzing" | "done";
-type StomachState  = "empty stomach" | "after meal" | null;
+type AnalyzeStatus = "idle" | "no-device" | "analyzing" | "done" | "error";
+type StomachState = "Empty stomach" | "After meal" | null;
 
 const STREAK_COUNT_KEY      = "acidex_streak_count";
 const LAST_ANALYSIS_DATE_KEY = "acidex_last_analysis_date";
@@ -123,6 +132,10 @@ export default function HomeScreen() {
   const [analyzeStatus,        setAnalyzeStatus]        = useState<AnalyzeStatus>("idle");
   const [stomachState,         setStomachState]         = useState<StomachState>(null);
   const [probeReady,           setProbeReady]           = useState(false);
+  const [analyzeError, setAnalyzeError] = useState<string | null>(null);
+  const [analyzeProgressMessage, setAnalyzeProgressMessage] = useState<string | null>(null);
+  const [arduinoDebugLines, setArduinoDebugLines] = useState<string[]>([]);
+  const [pendingRecord,        setPendingRecord]        = useState<AnalysisRecord | null>(null);
 
   const coffee = useThemeColor({}, "coffee");
   const text   = useThemeColor({}, "text");
@@ -162,6 +175,7 @@ export default function HomeScreen() {
 
     fetchUserAndAvatar();
     loadStreak();
+    refreshOtgStatus();
   }, []);
 
   useEffect(() => {
@@ -197,35 +211,112 @@ export default function HomeScreen() {
     } catch (error) { console.log("increment streak error:", error); }
   };
 
-  const detectOtgDevice = async () => isOtgConnected;
-  const runAnalysisModule = async () =>
-    new Promise<void>((resolve) => setTimeout(() => resolve(), 2200));
+  const refreshOtgStatus = async () => {
+    try {
+      const connected = await hasUsbDevice();
+      setIsOtgConnected(connected);
+      return connected;
+    } catch (error) {
+      console.log("refreshOtgStatus error:", error);
+      setIsOtgConnected(false);
+      return false;
+    }
+  };
 
   const handleAnalyzePress = async () => {
-    const hasOtg = await detectOtgDevice();
+    const hasOtg = await refreshOtgStatus();
     setAnalyzeModalVisible(true);
+    setAnalyzeError(null);
+    setAnalyzeProgressMessage(null);
+    setArduinoDebugLines([]);
+    setPendingRecord(null);
     if (!hasOtg) { setAnalyzeStatus("no-device"); return; }
     setProbeReady(false);
     setAnalyzeStatus("analyzing");
     try {
-      await runAnalysisModule();
+      const record = await readSensorData((progress: ArduinoReadProgress) => {
+        setAnalyzeProgressMessage(progress.message);
+
+        if (progress.rawChunk) {
+          const nextLines = progress.rawChunk
+            .split(/\r?\n/)
+            .map((line) => line.trim())
+            .filter(Boolean)
+            .filter(
+              (line) =>
+                line.startsWith("READY SAMPLE") ||
+                line.startsWith("STABLE") ||
+                line.startsWith("COLLECTING") ||
+                line.startsWith("DONE") ||
+                line.startsWith("RESULT_JSON:") ||
+                line.startsWith("DEBUG:")
+            );
+
+          if (nextLines.length) {
+            setArduinoDebugLines((current) => [...current, ...nextLines].slice(-6));
+          }
+        }
+      });
+
+      if (!record) {
+        throw new Error("No valid Arduino result was parsed from the USB stream.");
+      }
       await incrementStreakIfNeeded();
+      setPendingRecord(record);
       setProbeReady(true);
       // only advance to done if user has already logged stomach state
       // otherwise the useEffect below will catch it when they tap
     } catch (error) {
       console.log("analysis error:", error);
-      setAnalyzeStatus("idle");
-      setAnalyzeModalVisible(false);
+      setAnalyzeError(
+        error instanceof Error ? error.message : "Failed to read the OTG device."
+      );
+      setAnalyzeStatus("error");
     }
   };
 
-  // advance to "done" only when BOTH probe finished AND stomach state is selected
   useEffect(() => {
-    if (probeReady && stomachState !== null && analyzeStatus === "analyzing") {
-      setAnalyzeStatus("done");
+    if (!probeReady || stomachState === null || analyzeStatus !== "analyzing" || !pendingRecord) {
+      return;
     }
-  }, [probeReady, stomachState, analyzeStatus]);
+
+    const nextRiskLevel = classifyRiskLevel(pendingRecord.classification, stomachState);
+    const nextRecord: AnalysisRecord = {
+      ...pendingRecord,
+      stomachState,
+      riskLevel: nextRiskLevel,
+      narrative: buildRuleBasedNarrative({
+        coffeeType: pendingRecord.coffeeType,
+        ph: pendingRecord.ph,
+        classification: pendingRecord.classification,
+        riskLevel: nextRiskLevel,
+        stomachState,
+        cupsToday: pendingRecord.cupsToday,
+      }),
+    };
+
+    let cancelled = false;
+
+    const persistRecord = async () => {
+      await saveAnalysisRecord(nextRecord);
+      if (cancelled) return;
+
+      setPendingRecord(nextRecord);
+      setAnalyzeStatus("done");
+    };
+
+    persistRecord().catch((error) => {
+      console.log("persist analyzed record error:", error);
+      if (!cancelled) {
+        setAnalyzeError("Analysis finished, but saving the stomach state failed.");
+        setAnalyzeStatus("error");
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [analyzeStatus, pendingRecord, probeReady, stomachState]);
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -251,6 +342,10 @@ export default function HomeScreen() {
       setAnalyzeStatus("idle");
       setStomachState(null);
       setProbeReady(false);
+      setPendingRecord(null);
+      setAnalyzeError(null);
+      setAnalyzeProgressMessage(null);
+      setArduinoDebugLines([]);
     }
   };
 
@@ -330,11 +425,9 @@ export default function HomeScreen() {
               analyze your coffee
             </ThemedText>
           </TouchableOpacity>
-
-          {/* dev toggle */}
-          <TouchableOpacity style={styles.devOtgToggle} onPress={() => setIsOtgConnected((p) => !p)}>
-            <ThemedText style={[styles.devOtgToggleText, { color: "rgba(255,255,255,0.45)" }]}>
-              dev · otg {isOtgConnected ? "connected" : "off"}
+          <TouchableOpacity style={styles.devOtgToggle} onPress={refreshOtgStatus}>
+            <ThemedText style={[styles.devOtgToggleText, { color: "rgba(255,255,255,0.6)" }]}>
+              otg: {isOtgConnected ? "connected" : "not connected"}
             </ThemedText>
           </TouchableOpacity>
         </ThemedView>
@@ -509,6 +602,12 @@ export default function HomeScreen() {
                     While the probe reads, tell us your stomach state.
                   </ThemedText>
 
+                  {!!analyzeProgressMessage && (
+                    <ThemedText style={[styles.analyzeProgressText, { color: coffee }]}>
+                      {analyzeProgressMessage}
+                    </ThemedText>
+                  )}
+
                   {/* stomach log card */}
                   <View style={styles.stomachCard}>
                     <View style={styles.stomachCardHeader}>
@@ -517,9 +616,9 @@ export default function HomeScreen() {
                     </View>
 
                     <View style={styles.stomachOptions}>
-                      {(["empty stomach", "after meal"] as StomachState[]).map((opt) => {
+                      {(["Empty stomach", "After meal"] as StomachState[]).map((opt) => {
                         const active = stomachState === opt;
-                        const icon   = opt === "empty stomach" ? "time-outline" : "restaurant-outline";
+                        const icon   = opt === "Empty stomach" ? "time-outline" : "restaurant-outline";
                         return (
                           <TouchableOpacity
                             key={opt}
@@ -560,12 +659,15 @@ export default function HomeScreen() {
                     )}
                   </View>
 
-                  {/* pulse dots */}
-                  <View style={styles.analyzingDots}>
-                    {[0, 1, 2].map((i) => (
-                      <View key={i} style={[styles.analyzingDot, { backgroundColor: coffee, opacity: 0.3 + i * 0.3 }]} />
-                    ))}
-                  </View>
+                  {!!arduinoDebugLines.length && (
+                    <View style={styles.analyzeDebugPanel}>
+                      {arduinoDebugLines.map((line, index) => (
+                        <ThemedText key={`${line}-${index}`} style={styles.analyzeDebugLine}>
+                          {line}
+                        </ThemedText>
+                      ))}
+                    </View>
+                  )}
                 </>
               )}
 
@@ -759,8 +861,28 @@ const styles = StyleSheet.create({
     fontSize: 13, lineHeight: 20, textAlign: "center",
     color: "#7A675C", marginBottom: 20,
   },
-  analyzingDots: { flexDirection: "row", gap: 8, marginTop: 4 },
-  analyzingDot:  { width: 8, height: 8, borderRadius: 4 },
+  analyzeProgressText: {
+    fontSize: 13,
+    lineHeight: 19,
+    textAlign: "center",
+    marginBottom: 14,
+    fontWeight: "600",
+  },
+  analyzeDebugPanel: {
+    width: "100%",
+    backgroundColor: "#F7F2EE",
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: "rgba(60,44,36,0.08)",
+  },
+  analyzeDebugLine: {
+    fontSize: 11,
+    lineHeight: 16,
+    color: "#5D4A40",
+    fontFamily: "monospace",
+  },
 
   actionButton: {
     width: "100%", paddingVertical: 12, borderRadius: 999,

@@ -3,7 +3,6 @@ import {
   ScrollView,
   StyleSheet,
   View,
-  Text,
   TouchableOpacity,
   Pressable,
   Dimensions,
@@ -13,7 +12,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { mockAnalysisRecords } from "@/src/data/analysisMock";
 import { AnalysisRecord } from "@/src/types/analysis";
 import { ThemedText } from "@/components/themed-text";
-import { ThemedView } from "@/components/themed-view";
 import Colors from "@/constants/colors";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -104,11 +102,11 @@ function getSummaryInsights(entries: AnalysisRecord[]): string[] {
   );
   const pct  = Math.round((acidic.length / entries.length) * 100);
   const risk = entries.filter(
-    (e) => e.stomachState === "empty stomach" && e.classification === "Highly Acidic"
+    (e) => e.stomachState === "Empty stomach" && e.classification === "Highly Acidic"
   ).length;
   return [
     `${pct}% of your entries were "Moderate" or "Highly Acidic".`,
-    `"empty stomach" + high acidity showed ${risk} higher-risk log${risk !== 1 ? "s" : ""}.`,
+    `"Empty stomach" + high acidity showed ${risk} higher-risk log${risk !== 1 ? "s" : ""}.`,
   ];
 }
 
