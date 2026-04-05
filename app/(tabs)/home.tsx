@@ -16,6 +16,18 @@ import { useRouter } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { Ionicons } from "@expo/vector-icons";
+import { hasUsbDevice } from "@/src/services/usbService";
+import { readSensorData } from "@/src/services/sensorService";
+import type {
+  ArduinoReadProgress,
+  ArduinoReadStage,
+} from "@/src/services/usbService";
+import { saveAnalysisRecord } from "@/src/store/analysisStore";
+import {
+  buildRuleBasedNarrative,
+  classifyRiskLevel,
+} from "@/src/services/analysisService";
+import type { AnalysisRecord } from "@/src/types/analysis";
 
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
@@ -101,8 +113,36 @@ const factsData = [
 const loopedFacts = [...factsData, ...factsData, ...factsData];
 
 type FactType = (typeof factsData)[0];
-type AnalyzeStatus = "idle" | "no-device" | "analyzing" | "done";
-type StomachState  = "empty stomach" | "after meal" | null;
+type AnalyzeStatus = "idle" | "no-device" | "analyzing" | "done" | "error";
+type StomachState = "Empty stomach" | "After meal" | null;
+
+const ANALYZE_STAGE_PROGRESS: Record<ArduinoReadStage | "persisting", number> = {
+  "device-found": 0.1,
+  "port-opened": 0.2,
+  "waiting-before-send": 0.3,
+  "command-sent": 0.42,
+  "serial-received": 0.56,
+  "serial-chunk": 0.66,
+  "arduino-ready": 0.72,
+  "arduino-stable": 0.82,
+  "arduino-collecting": 0.9,
+  "result-detected": 0.97,
+  persisting: 1,
+};
+
+const ANALYZE_STAGE_HINTS: Record<ArduinoReadStage | "persisting", string> = {
+  "device-found": "getting things ready",
+  "port-opened": "starting up",
+  "waiting-before-send": "settling in",
+  "command-sent": "checking the sample",
+  "serial-received": "locking onto the signal",
+  "serial-chunk": "fine-tuning the reading",
+  "arduino-ready": "sample recognized",
+  "arduino-stable": "holding a steady reading",
+  "arduino-collecting": "wrapping up the sample",
+  "result-detected": "almost there",
+  persisting: "putting everything together",
+};
 
 const STREAK_COUNT_KEY      = "acidex_streak_count";
 const LAST_ANALYSIS_DATE_KEY = "acidex_last_analysis_date";
@@ -123,11 +163,16 @@ export default function HomeScreen() {
   const [analyzeStatus,        setAnalyzeStatus]        = useState<AnalyzeStatus>("idle");
   const [stomachState,         setStomachState]         = useState<StomachState>(null);
   const [probeReady,           setProbeReady]           = useState(false);
+  const [analyzeError, setAnalyzeError] = useState<string | null>(null);
+  const [analyzeStage, setAnalyzeStage] = useState<ArduinoReadStage | "persisting" | null>(null);
+  const [pendingRecord,        setPendingRecord]        = useState<AnalysisRecord | null>(null);
 
   const coffee = useThemeColor({}, "coffee");
   const text   = useThemeColor({}, "text");
 
   const fallbackDefaultAvatar = useMemo(() => DEFAULT_AVATARS[0], []);
+  const analyzeProgress = analyzeStage ? ANALYZE_STAGE_PROGRESS[analyzeStage] : 0.08;
+  const analyzeHint = analyzeStage ? ANALYZE_STAGE_HINTS[analyzeStage] : "preparing";
 
   // ── data loading ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -162,6 +207,7 @@ export default function HomeScreen() {
 
     fetchUserAndAvatar();
     loadStreak();
+    refreshOtgStatus();
   }, []);
 
   useEffect(() => {
@@ -197,35 +243,92 @@ export default function HomeScreen() {
     } catch (error) { console.log("increment streak error:", error); }
   };
 
-  const detectOtgDevice = async () => isOtgConnected;
-  const runAnalysisModule = async () =>
-    new Promise<void>((resolve) => setTimeout(() => resolve(), 2200));
+  const refreshOtgStatus = async () => {
+    try {
+      const connected = await hasUsbDevice();
+      setIsOtgConnected(connected);
+      return connected;
+    } catch (error) {
+      console.log("refreshOtgStatus error:", error);
+      setIsOtgConnected(false);
+      return false;
+    }
+  };
 
   const handleAnalyzePress = async () => {
-    const hasOtg = await detectOtgDevice();
+    const hasOtg = await refreshOtgStatus();
     setAnalyzeModalVisible(true);
+    setAnalyzeError(null);
+    setAnalyzeStage(null);
+    setPendingRecord(null);
     if (!hasOtg) { setAnalyzeStatus("no-device"); return; }
     setProbeReady(false);
     setAnalyzeStatus("analyzing");
     try {
-      await runAnalysisModule();
+      const record = await readSensorData((progress: ArduinoReadProgress) => {
+        setAnalyzeStage(progress.stage);
+      });
+
+      if (!record) {
+        throw new Error("No valid Arduino result was parsed from the USB stream.");
+      }
       await incrementStreakIfNeeded();
+      setPendingRecord(record);
       setProbeReady(true);
       // only advance to done if user has already logged stomach state
       // otherwise the useEffect below will catch it when they tap
     } catch (error) {
       console.log("analysis error:", error);
-      setAnalyzeStatus("idle");
-      setAnalyzeModalVisible(false);
+      setAnalyzeError(
+        error instanceof Error ? error.message : "Failed to read the OTG device."
+      );
+      setAnalyzeStatus("error");
     }
   };
 
-  // advance to "done" only when BOTH probe finished AND stomach state is selected
   useEffect(() => {
-    if (probeReady && stomachState !== null && analyzeStatus === "analyzing") {
-      setAnalyzeStatus("done");
+    if (!probeReady || stomachState === null || analyzeStatus !== "analyzing" || !pendingRecord) {
+      return;
     }
-  }, [probeReady, stomachState, analyzeStatus]);
+
+    const nextRiskLevel = classifyRiskLevel(pendingRecord.classification, stomachState);
+    const nextRecord: AnalysisRecord = {
+      ...pendingRecord,
+      stomachState,
+      riskLevel: nextRiskLevel,
+      narrative: buildRuleBasedNarrative({
+        coffeeType: pendingRecord.coffeeType,
+        ph: pendingRecord.ph,
+        classification: pendingRecord.classification,
+        riskLevel: nextRiskLevel,
+        stomachState,
+        cupsToday: pendingRecord.cupsToday,
+      }),
+    };
+
+    let cancelled = false;
+
+    const persistRecord = async () => {
+      setAnalyzeStage("persisting");
+      await saveAnalysisRecord(nextRecord);
+      if (cancelled) return;
+
+      setPendingRecord(nextRecord);
+      setAnalyzeStatus("done");
+    };
+
+    persistRecord().catch((error) => {
+      console.log("persist analyzed record error:", error);
+      if (!cancelled) {
+        setAnalyzeError("Analysis finished, but saving the stomach state failed.");
+        setAnalyzeStatus("error");
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [analyzeStatus, pendingRecord, probeReady, stomachState]);
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -251,6 +354,9 @@ export default function HomeScreen() {
       setAnalyzeStatus("idle");
       setStomachState(null);
       setProbeReady(false);
+      setPendingRecord(null);
+      setAnalyzeError(null);
+      setAnalyzeStage(null);
     }
   };
 
@@ -330,11 +436,9 @@ export default function HomeScreen() {
               analyze your coffee
             </ThemedText>
           </TouchableOpacity>
-
-          {/* dev toggle */}
-          <TouchableOpacity style={styles.devOtgToggle} onPress={() => setIsOtgConnected((p) => !p)}>
-            <ThemedText style={[styles.devOtgToggleText, { color: "rgba(255,255,255,0.45)" }]}>
-              dev · otg {isOtgConnected ? "connected" : "off"}
+          <TouchableOpacity style={styles.devOtgToggle} onPress={refreshOtgStatus}>
+            <ThemedText style={[styles.devOtgToggleText, { color: "rgba(255,255,255,0.6)" }]}>
+              otg: {isOtgConnected ? "connected" : "not connected"}
             </ThemedText>
           </TouchableOpacity>
         </ThemedView>
@@ -509,6 +613,23 @@ export default function HomeScreen() {
                     While the probe reads, tell us your stomach state.
                   </ThemedText>
 
+                  <View style={styles.analyzeProgressWrap}>
+                    <View style={styles.analyzeProgressTrack}>
+                      <View
+                        style={[
+                          styles.analyzeProgressFill,
+                          {
+                            backgroundColor: coffee,
+                            width: `${Math.max(8, Math.round(analyzeProgress * 100))}%`,
+                          },
+                        ]}
+                      />
+                    </View>
+                    <ThemedText style={[styles.analyzeProgressText, { color: coffee }]}>
+                      {analyzeHint}
+                    </ThemedText>
+                  </View>
+
                   {/* stomach log card */}
                   <View style={styles.stomachCard}>
                     <View style={styles.stomachCardHeader}>
@@ -517,9 +638,9 @@ export default function HomeScreen() {
                     </View>
 
                     <View style={styles.stomachOptions}>
-                      {(["empty stomach", "after meal"] as StomachState[]).map((opt) => {
+                      {(["Empty stomach", "After meal"] as StomachState[]).map((opt) => {
                         const active = stomachState === opt;
-                        const icon   = opt === "empty stomach" ? "time-outline" : "restaurant-outline";
+                        const icon   = opt === "Empty stomach" ? "time-outline" : "restaurant-outline";
                         return (
                           <TouchableOpacity
                             key={opt}
@@ -560,12 +681,6 @@ export default function HomeScreen() {
                     )}
                   </View>
 
-                  {/* pulse dots */}
-                  <View style={styles.analyzingDots}>
-                    {[0, 1, 2].map((i) => (
-                      <View key={i} style={[styles.analyzingDot, { backgroundColor: coffee, opacity: 0.3 + i * 0.3 }]} />
-                    ))}
-                  </View>
                 </>
               )}
 
@@ -759,8 +874,29 @@ const styles = StyleSheet.create({
     fontSize: 13, lineHeight: 20, textAlign: "center",
     color: "#7A675C", marginBottom: 20,
   },
-  analyzingDots: { flexDirection: "row", gap: 8, marginTop: 4 },
-  analyzingDot:  { width: 8, height: 8, borderRadius: 4 },
+  analyzeProgressText: {
+    fontSize: 12,
+    lineHeight: 18,
+    textAlign: "center",
+    marginTop: 8,
+    fontWeight: "600",
+    textTransform: "lowercase",
+  },
+  analyzeProgressWrap: {
+    width: "100%",
+    marginBottom: 16,
+  },
+  analyzeProgressTrack: {
+    width: "100%",
+    height: 10,
+    backgroundColor: "#E9DDD5",
+    borderRadius: 999,
+    overflow: "hidden",
+  },
+  analyzeProgressFill: {
+    height: "100%",
+    borderRadius: 999,
+  },
 
   actionButton: {
     width: "100%", paddingVertical: 12, borderRadius: 999,

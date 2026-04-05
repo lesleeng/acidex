@@ -1,20 +1,18 @@
-import React, { useState, useMemo } from "react";
-import {
-  ScrollView,
-  StyleSheet,
-  View,
-  Text,
-  TouchableOpacity,
-  Pressable,
-  Dimensions,
-} from "react-native";
-import Svg, { Path, Circle, Rect, Line, Text as SvgText, Defs, LinearGradient, Stop } from "react-native-svg";
-import { Ionicons } from "@expo/vector-icons";
-import { mockAnalysisRecords } from "@/src/data/analysisMock";
-import { AnalysisRecord } from "@/src/types/analysis";
 import { ThemedText } from "@/components/themed-text";
-import { ThemedView } from "@/components/themed-view";
 import Colors from "@/constants/colors";
+import { getStoredAnalysisHistory } from "@/src/store/analysisStore";
+import { AnalysisRecord } from "@/src/types/analysis";
+import { Ionicons } from "@expo/vector-icons";
+import React, { useEffect, useMemo, useState } from "react";
+import {
+    Dimensions,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    TouchableOpacity,
+    View,
+} from "react-native";
+import Svg, { Circle, Defs, Line, LinearGradient, Path, Rect, Stop, Text as SvgText } from "react-native-svg";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -50,10 +48,10 @@ const CHART_W  = SCREEN_W - 64; // card padding both sides
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function filterByDays(days: number): AnalysisRecord[] {
-  if (days === 9999) return mockAnalysisRecords;
+function filterByDays(days: number, records: AnalysisRecord[]): AnalysisRecord[] {
+  if (days === 9999) return records;
   const cutoff = new Date(Date.now() - days * 86_400_000);
-  return mockAnalysisRecords.filter((e) => new Date(e.createdAt) >= cutoff);
+  return records.filter((e) => new Date(e.createdAt) >= cutoff);
 }
 
 function getCoffeeTypeAverages(entries: AnalysisRecord[]) {
@@ -104,11 +102,11 @@ function getSummaryInsights(entries: AnalysisRecord[]): string[] {
   );
   const pct  = Math.round((acidic.length / entries.length) * 100);
   const risk = entries.filter(
-    (e) => e.stomachState === "empty stomach" && e.classification === "Highly Acidic"
+    (e) => e.stomachState === "Empty stomach" && e.classification === "Highly Acidic"
   ).length;
   return [
     `${pct}% of your entries were "Moderate" or "Highly Acidic".`,
-    `"empty stomach" + high acidity showed ${risk} higher-risk log${risk !== 1 ? "s" : ""}.`,
+    `"Empty stomach" + high acidity showed ${risk} higher-risk log${risk !== 1 ? "s" : ""}.`,
   ];
 }
 
@@ -477,13 +475,38 @@ function FilterDropdown({
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function DashboardScreen() {
+  const [records, setRecords] = useState<AnalysisRecord[]>([]);
   const [selectedFilter, setSelectedFilter] = useState<FilterOption>(
     FILTER_OPTIONS.find((f) => f.days === 30)!
   );
   // null = both compact side-by-side, "bar" = bar expanded full, "donut" = donut expanded full
   const [expandedChart, setExpandedChart] = useState<null | "bar" | "donut">(null);
 
-  const filteredEntries  = useMemo(() => filterByDays(selectedFilter.days), [selectedFilter]);
+  useEffect(() => {
+    let mounted = true;
+
+    const loadRecords = async () => {
+      const stored = await getStoredAnalysisHistory();
+      if (!mounted) return;
+
+      const sortedOldestFirst = [...stored].sort(
+        (a, b) =>
+          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      );
+      setRecords(sortedOldestFirst);
+    };
+
+    loadRecords();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const filteredEntries  = useMemo(
+    () => filterByDays(selectedFilter.days, records),
+    [selectedFilter, records]
+  );
   const summaryInsights  = useMemo(() => getSummaryInsights(filteredEntries), [filteredEntries]);
   const patternInsights  = useMemo(() => getPatternInsights(filteredEntries), [filteredEntries]);
 
