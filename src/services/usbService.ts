@@ -1,6 +1,7 @@
 import { Platform } from "react-native";
 import {
   Device,
+  Codes,
   Parity,
   UsbSerial,
   UsbSerialManager,
@@ -24,6 +25,8 @@ export type ArduinoReadStage =
   | "arduino-stable"
   | "arduino-collecting"
   | "result-detected";
+
+export type ArduinoWaitMode = "measurement" | "calibration";
 
 export interface ArduinoReadProgress {
   stage: ArduinoReadStage;
@@ -65,16 +68,12 @@ function asciiToHex(text: string) {
     .toUpperCase();
 }
 
-function hasCompleteResultBlock(buffer: string) {
-  return (
-    buffer.includes("RESULT_JSON:") ||
-    (
-    buffer.includes("=== RESULT ===") &&
-    buffer.includes("Calculated pH:") &&
-    buffer.includes("Samples Collected:") &&
-    buffer.includes("Voltage stabilized at:")
-    )
-  );
+function hasCompleteMeasurementBlock(buffer: string) {
+  return buffer.includes("RESULT_JSON:");
+}
+
+function hasCompleteCalibrationBlock(buffer: string) {
+  return buffer.includes("CAL_JSON:") || buffer.includes("CAL_UPDATED_JSON:") || buffer.includes("CAL_CURRENT_JSON:");
 }
 
 export async function listUsbDevices(): Promise<Device[]> {
@@ -92,31 +91,76 @@ export async function hasUsbDevice(): Promise<boolean> {
   return !!device;
 }
 
-export async function openUsbConnection(device: Device): Promise<UsbSerial> {
+export function describeUsbDevice(device: Device): string {
+  return `deviceId=${device.deviceId}, vendorId=0x${device.vendorId
+    .toString(16)
+    .padStart(4, "0")}, productId=0x${device.productId
+    .toString(16)
+    .padStart(4, "0")}`;
+}
+
+export async function requestUsbPermissionIfNeeded(device: Device): Promise<boolean> {
   ensureAndroid();
 
   const hasPermission = await UsbSerialManager.hasPermission(device.deviceId);
-  if (!hasPermission) {
-    const grantedImmediately = await UsbSerialManager.tryRequestPermission(
-      device.deviceId
-    );
-
-    if (!grantedImmediately) {
-      throw new Error("USB permission prompt shown. Tap analyze again after allowing access.");
-    }
+  if (hasPermission) {
+    return true;
   }
 
-  return UsbSerialManager.open(device.deviceId, DEFAULT_OPEN_OPTIONS);
+  return UsbSerialManager.tryRequestPermission(device.deviceId);
+}
+
+export async function openUsbConnection(device: Device): Promise<UsbSerial> {
+  ensureAndroid();
+
+  const granted = await requestUsbPermissionIfNeeded(device);
+  if (!granted) {
+    throw new Error(
+      `USB permission prompt shown for ${describeUsbDevice(device)}. Tap analyze again after allowing access.`
+    );
+  }
+
+  try {
+    return await UsbSerialManager.open(device.deviceId, DEFAULT_OPEN_OPTIONS);
+  } catch (error) {
+    const code = (error as { code?: string } | null)?.code;
+
+    if (code === Codes.DRIVER_NOT_FOND) {
+      throw new Error(
+        `Android found ${describeUsbDevice(device)}, but the USB serial driver could not recognize it. ` +
+          "If the board is meant to expose CDC, make sure the app is rebuilt with the updated native module."
+      );
+    }
+
+    if (code === Codes.PERMISSION_DENIED) {
+      throw new Error(
+        `Android could not access ${describeUsbDevice(device)} after permission was requested. Reconnect the cable, tap the USB prompt again, and retry.`
+      );
+    }
+
+    if (code === Codes.OPEN_FAILED) {
+      throw new Error(
+        `Android found ${describeUsbDevice(device)} and granted permission, but opening the serial port still failed. ` +
+          "This usually means the connected USB interface is not a supported serial adapter."
+      );
+    }
+
+    throw new Error(
+      `Failed to open ${describeUsbDevice(device)}. This usually means Android found the USB device but no serial driver supports it.`
+    );
+  }
 }
 
 export async function sendAsciiCommand(port: UsbSerial, command: string): Promise<void> {
-  await port.send(asciiToHex(command));
+  const normalized = command.endsWith("\n") ? command : `${command}\n`;
+  await port.send(asciiToHex(normalized));
 }
 
 export async function waitForArduinoResult(
   port: UsbSerial,
   timeoutMs = 150000,
-  onProgress?: ProgressListener
+  onProgress?: ProgressListener,
+  mode: ArduinoWaitMode = "measurement"
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     let buffer = "";
@@ -127,6 +171,7 @@ export async function waitForArduinoResult(
     let hasReportedStable = false;
     let hasReportedCollecting = false;
     let hasReportedResult = false;
+    let lastChunkProgressAt = 0;
 
     const finish = async (action: "resolve" | "reject", payload: string | Error) => {
       if (settled) return;
@@ -163,14 +208,19 @@ export async function waitForArduinoResult(
           rawChunk: chunk,
         });
       } else {
-        onProgress?.({
-          stage: "serial-chunk",
-          message: "Arduino is still sending serial data.",
-          rawChunk: chunk,
-        });
+        const now = Date.now();
+        // Throttle chunk events to keep the UI responsive.
+        if (now - lastChunkProgressAt > 250) {
+          lastChunkProgressAt = now;
+          onProgress?.({
+            stage: "serial-chunk",
+            message: "Arduino is still sending serial data.",
+            rawChunk: chunk,
+          });
+        }
       }
 
-      if (!hasReportedReady && buffer.includes("READY SAMPLE")) {
+      if (!hasReportedReady && buffer.includes('"status":"ready"')) {
         hasReportedReady = true;
         onProgress?.({
           stage: "arduino-ready",
@@ -179,7 +229,7 @@ export async function waitForArduinoResult(
         });
       }
 
-      if (!hasReportedStable && buffer.includes("STABLE")) {
+      if (!hasReportedStable && buffer.includes('"status":"stable"')) {
         hasReportedStable = true;
         onProgress?.({
           stage: "arduino-stable",
@@ -188,7 +238,7 @@ export async function waitForArduinoResult(
         });
       }
 
-      if (!hasReportedCollecting && buffer.includes("COLLECTING")) {
+      if (!hasReportedCollecting && buffer.includes('"status":"collecting"')) {
         hasReportedCollecting = true;
         onProgress?.({
           stage: "arduino-collecting",
@@ -197,7 +247,12 @@ export async function waitForArduinoResult(
         });
       }
 
-      if (!hasCompleteResultBlock(buffer)) {
+      const complete =
+        mode === "calibration"
+          ? hasCompleteCalibrationBlock(buffer)
+          : hasCompleteMeasurementBlock(buffer);
+
+      if (!complete) {
         return;
       }
 
@@ -230,7 +285,7 @@ export async function collectSingleArduinoResult(sampleCommand = "1"): Promise<s
 }
 
 export async function collectSingleArduinoResultWithProgress(
-  sampleCommand = "1",
+  sampleId = "1",
   onProgress?: ProgressListener
 ): Promise<string> {
   const device = await getFirstUsbDevice();
@@ -255,11 +310,47 @@ export async function collectSingleArduinoResultWithProgress(
   });
 
   await delay(1500);
-  await sendAsciiCommand(port, sampleCommand);
+  const command = `M ${sampleId.trim() || "1"}`;
+  await sendAsciiCommand(port, command);
   onProgress?.({
     stage: "command-sent",
-    message: `Sample command ${sampleCommand} sent to Arduino.`,
+    message: `Command '${command}' sent to Arduino.`,
   });
 
-  return waitForArduinoResult(port, 120000, onProgress);
+  return waitForArduinoResult(port, 120000, onProgress, "measurement");
+}
+
+export async function runArduinoCalibrationCommandWithProgress(
+  command: "L" | "H" | "?" | `C ${number} ${number}`,
+  onProgress?: ProgressListener
+): Promise<string> {
+  const device = await getFirstUsbDevice();
+  if (!device) {
+    throw new Error("No OTG USB serial device detected.");
+  }
+
+  onProgress?.({
+    stage: "device-found",
+    message: "USB serial device found.",
+  });
+
+  const port = await openUsbConnection(device);
+  onProgress?.({
+    stage: "port-opened",
+    message: "USB serial port opened.",
+  });
+
+  onProgress?.({
+    stage: "waiting-before-send",
+    message: "Waiting for Arduino serial to settle.",
+  });
+
+  await delay(1500);
+  await sendAsciiCommand(port, command);
+  onProgress?.({
+    stage: "command-sent",
+    message: `Calibration command '${command}' sent to Arduino.`,
+  });
+
+  return waitForArduinoResult(port, 120000, onProgress, "calibration");
 }

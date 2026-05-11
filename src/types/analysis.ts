@@ -11,7 +11,7 @@ export type PHClassification =
 
 export type RiskLevel = "Low Risk" | "Moderate Risk" | "High Risk";
 export type BinaryAcidityLabel = "Acidic" | "Non-Acidic";
-export type MlModelKey = "logistic_regression";
+export type MlModelKey = "logistic_regression" | "decision_stump";
 
 export interface AnalysisNarrative {
   summary: string;
@@ -48,6 +48,7 @@ export interface AnalysisRecord {
   averageVoltage?: number;
   samplesCollected?: number;
   sampleId?: string;
+  title?: string;
   note?: string;
   stomachState?: "Empty stomach" | "After meal";
   cupsToday?: number;

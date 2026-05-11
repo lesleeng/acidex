@@ -7,7 +7,7 @@ import { AnalysisRecord } from "@/src/types/analysis";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import React, { useEffect, useMemo, useState } from "react";
 import {
-    ScrollView,
+    FlatList,
     StyleSheet,
     TextInput,
     TouchableOpacity,
@@ -104,91 +104,104 @@ export default function HistoryScreen() {
       const matchSearch = !q ||
         item.coffeeType.toLowerCase().includes(q) ||
         item.classification.toLowerCase().includes(q) ||
+        (item.title ?? "").toLowerCase().includes(q) ||
         (item.note ?? "").toLowerCase().includes(q) ||
         formatCardDate(item.createdAt).toLowerCase().includes(q);
       return matchFilter && matchSearch;
     }), [sortedRecords, selectedFilter, search]);
 
+  const ListHeader = (
+    <>
+      {/* ── Header (unchanged) ── */}
+      <ThemedView style={[s.header, { backgroundColor: Colors.light.background }]}>
+        <View style={s.headerMiddle}>
+          <ThemedText style={[s.title, { color: coffee }]}>history.</ThemedText>
+          <ThemedText style={s.subtitle}>your full analysis log</ThemedText>
+        </View>
+      </ThemedView>
+
+      {/* ── Search + filters ── */}
+      <View style={s.searchBlock}>
+        {/* search bar */}
+        <View style={s.searchRow}>
+          <Ionicons name="search" size={16} color="#A08880" />
+          <TextInput
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Search history"
+            placeholderTextColor="#C4A882"
+            style={s.searchInput}
+          />
+          {search.length > 0 && (
+            <TouchableOpacity onPress={() => setSearch("")} activeOpacity={0.7}>
+              <Ionicons name="close-circle" size={16} color="#C4A882" />
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* filter chips */}
+        <FlatList
+          data={filters}
+          keyExtractor={(item) => item}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={s.filterRow}
+          renderItem={({ item: f }) => {
+            const active = selectedFilter === f;
+            return (
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => setSelectedFilter(f)}
+                style={[s.filterChip, active && s.filterChipActive]}
+              >
+                <ThemedText style={[s.filterChipText, active && s.filterChipTextActive]}>
+                  {f}
+                </ThemedText>
+              </TouchableOpacity>
+            );
+          }}
+        />
+      </View>
+
+      {/* ── Count row ── */}
+      {filteredRecords.length > 0 && (
+        <View style={s.countRow}>
+          <ThemedText style={s.countText}>
+            {filteredRecords.length} record{filteredRecords.length !== 1 ? "s" : ""}
+          </ThemedText>
+        </View>
+      )}
+    </>
+  );
+
   return (
     <ThemedView style={s.screen}>
-      <ScrollView
+      <FlatList
         style={s.scroll}
         contentContainerStyle={s.content}
         showsVerticalScrollIndicator={false}
-      >
-        {/* ── Header (unchanged) ── */}
-        <ThemedView style={[s.header, { backgroundColor: Colors.light.background }]}>
-          <View style={s.headerMiddle}>
-            <ThemedText style={[s.title, { color: coffee }]}>history.</ThemedText>
-            <ThemedText style={s.subtitle}>your full analysis log</ThemedText>
-          </View>
-        </ThemedView>
-
-        {/* ── Search + filters ── */}
-        <View style={s.searchBlock}>
-          {/* search bar */}
-          <View style={s.searchRow}>
-            <Ionicons name="search" size={16} color="#A08880" />
-            <TextInput
-              value={search}
-              onChangeText={setSearch}
-              placeholder="Search history"
-              placeholderTextColor="#C4A882"
-              style={s.searchInput}
-            />
-            {search.length > 0 && (
-              <TouchableOpacity onPress={() => setSearch("")} activeOpacity={0.7}>
-                <Ionicons name="close-circle" size={16} color="#C4A882" />
-              </TouchableOpacity>
-            )}
-          </View>
-
-          {/* filter chips */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={s.filterRow}
-          >
-            {filters.map((f) => {
-              const active = selectedFilter === f;
-              return (
-                <TouchableOpacity
-                  key={f}
-                  activeOpacity={0.8}
-                  onPress={() => setSelectedFilter(f)}
-                  style={[s.filterChip, active && s.filterChipActive]}
-                >
-                  <ThemedText style={[s.filterChipText, active && s.filterChipTextActive]}>
-                    {f}
-                  </ThemedText>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        </View>
-
-        {/* ── Count row ── */}
-        {filteredRecords.length > 0 && (
-          <View style={s.countRow}>
-            <ThemedText style={s.countText}>
-              {filteredRecords.length} record{filteredRecords.length !== 1 ? "s" : ""}
-            </ThemedText>
-          </View>
-        )}
-
-        {/* ── List ── */}
-        {filteredRecords.length === 0 ? (
+        data={filteredRecords}
+        keyExtractor={(item) => item.id}
+        ListHeaderComponent={ListHeader}
+        keyboardShouldPersistTaps="handled"
+        removeClippedSubviews
+        initialNumToRender={8}
+        windowSize={7}
+        maxToRenderPerBatch={8}
+        updateCellsBatchingPeriod={50}
+        ListEmptyComponent={
           <View style={s.emptyCard}>
             <ThemedText style={s.emptyText}>No analysis records found.</ThemedText>
           </View>
-        ) : (
-          filteredRecords.map((item) =>
-            expandedId === item.id
-              ? <ExpandedCard key={item.id} item={item} onCollapse={() => setExpandedId(null)} />
-              : <CollapsedCard key={item.id} item={item} onExpand={() => setExpandedId(item.id)} />
+        }
+        renderItem={({ item }) =>
+          expandedId === item.id ? (
+            <ExpandedCard item={item} onCollapse={() => setExpandedId(null)} />
+          ) : (
+            <CollapsedCard item={item} onExpand={() => setExpandedId(item.id)} />
           )
-        )}
-      </ScrollView>
+        }
+      />
     </ThemedView>
   );
 }
@@ -232,6 +245,9 @@ function CollapsedCard({ item, onExpand }: { item: AnalysisRecord; onExpand: () 
             )}
           </View>
 
+          {!!item.title && (
+            <ThemedText style={s.titlePreview} numberOfLines={1}>{item.title}</ThemedText>
+          )}
           {!!item.note && (
             <ThemedText style={s.notePreview} numberOfLines={1}>{item.note}</ThemedText>
           )}
@@ -307,6 +323,14 @@ function ExpandedCard({ item, onCollapse }: { item: AnalysisRecord; onCollapse: 
         </View>
         <ThemedText style={s.advisoryBody}>{getHealthAdvisory(item)}</ThemedText>
       </View>
+
+      {/* title */}
+      {item.title && (
+        <View style={s.notesBlock}>
+          <ThemedText style={s.notesTitle}>Result Title</ThemedText>
+          <ThemedText style={s.notesText}>{item.title}</ThemedText>
+        </View>
+      )}
 
       {/* personal notes */}
       <View style={s.notesBlock}>
@@ -393,6 +417,7 @@ const s = StyleSheet.create({
   phText:      { fontSize: 12, color: "#8B6A55", fontWeight: "600" },
   riskPill:    { borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },
   riskPillText:{ fontSize: 10, fontWeight: "600" },
+  titlePreview: { fontSize: 12, fontWeight: "600", color: "#3C2C24", lineHeight: 18, marginBottom: 3 },
   notePreview: { fontSize: 12, color: "#A08880", lineHeight: 18 },
 
   badge:     { borderRadius: 999, paddingHorizontal: 9, paddingVertical: 3 },
