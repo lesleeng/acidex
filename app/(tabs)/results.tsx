@@ -1,12 +1,12 @@
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import React, { useEffect, useRef, useState } from "react";
 import {
-  Animated,
-  ScrollView,
-  StyleSheet,
-  TextInput,
-  TouchableOpacity,
-  View,
+    Animated,
+    ScrollView,
+    StyleSheet,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 
 import { ThemedText } from "@/components/themed-text";
@@ -14,14 +14,12 @@ import { ThemedView } from "@/components/themed-view";
 import Colors from "@/constants/colors";
 import { BookmarkStore } from "@/src/data/bookmarkStore";
 import {
-  getNarrativeWithFallback,
-  maybeEnrichAnalysisRecordWithLlm,
+    getNarrativeWithFallback,
 } from "@/src/services/aiAnalysisService";
 import {
-  evaluateTrainingSetLeaveOneOut,
-  getLatestAnalysis,
+    getLatestAnalysis,
 } from "@/src/services/analysisService";
-import { getLatestStoredAnalysis, saveAnalysisRecord } from "@/src/store/analysisStore";
+import { getLatestCachedAnalysis, getLatestStoredAnalysis, saveAnalysisRecord } from "@/src/store/analysisStore";
 import { AnalysisRecord } from "@/src/types/analysis";
 
 const CLASSIFICATION_COLORS = {
@@ -199,6 +197,8 @@ function Tag({ label, bg, color }: { label: string; bg: string; color: string })
 
 export default function ResultsScreen() {
   const [latest, setLatest] = useState<AnalysisRecord | null>(null);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [titleText, setTitleText] = useState("");
   const [isEditingNotes, setIsEditingNotes] = useState(false);
   const [notesText, setNotesText] = useState("");
   const [toastVisible, setToastVisible] = useState(false);
@@ -211,19 +211,19 @@ export default function ResultsScreen() {
     let mounted = true;
 
     const loadLatest = async () => {
+      const cached = getLatestCachedAnalysis();
+      const fallback = cached ?? getLatestAnalysis();
+      const initial = fallback;
+
+      if (mounted) {
+        setLatest(initial);
+      }
+
       const stored = await getLatestStoredAnalysis();
-      const fallback = getLatestAnalysis();
-      const initial = stored ?? fallback;
+      const next = stored ?? cached ?? fallback;
 
       if (!mounted) return;
-      setLatest(initial);
-
-      if (!initial) return;
-
-      const enriched = await maybeEnrichAnalysisRecordWithLlm(initial);
-      if (mounted) {
-        setLatest(enriched);
-      }
+      setLatest(next);
     };
 
     loadLatest();
@@ -237,6 +237,7 @@ export default function ResultsScreen() {
   useEffect(() => {
     if (!latest) return;
 
+    setTitleText(latest.title ?? "");
     setNotesText(latest.note ?? "");
     setIsBookmarked(BookmarkStore.isBookmarked(latest.id));
   }, [latest]);
@@ -246,6 +247,25 @@ export default function ResultsScreen() {
     setToastType(type);
     setToastVisible(true);
     toastTimer.current = setTimeout(() => setToastVisible(false), 2200);
+  };
+
+  const handleSaveTitle = async () => {
+    if (!latest) return;
+
+    const nextRecord: AnalysisRecord = {
+      ...latest,
+      title: titleText.trim() || undefined,
+    };
+
+    await saveAnalysisRecord(nextRecord);
+    setLatest(nextRecord);
+    setIsEditingTitle(false);
+    showToast("save");
+  };
+
+  const handleCancelTitleEdit = () => {
+    setTitleText(latest?.title ?? "");
+    setIsEditingTitle(false);
   };
 
   const handleSaveNotes = async () => {
@@ -299,7 +319,7 @@ export default function ResultsScreen() {
   const tips = getTipRows(latest, narrative.tips);
   const effects = narrative.likelyEffectItems;
   const impacts = narrative.impactItems;
-  const logisticMetrics = evaluateTrainingSetLeaveOneOut();
+  // ML model is now a fixed decision-stump; no LOOCV metrics shown here.
 
   const bookmarkButton = (
     <TouchableOpacity
@@ -381,9 +401,6 @@ export default function ResultsScreen() {
             {!!latest.mlModelName && (
               <ThemedText style={r.metaText}>
                 ML model: {latest.mlModelName}
-                {latest.mlModelKey === "logistic_regression"
-                  ? ` · LOOCV F1 ${logisticMetrics.f1Score.toFixed(2)}`
-                  : ""}
               </ThemedText>
             )}
             {typeof latest.stabilizationTimeSec === "number" && (
@@ -413,7 +430,61 @@ export default function ResultsScreen() {
             )}
           </View>
         </SectionCard>
-
+        <SectionCard title="Result Title" accent="cream">
+          <InnerBlock>
+            {isEditingTitle ? (
+              <View>
+                <TextInput
+                  style={r.titleInput}
+                  value={titleText}
+                  onChangeText={setTitleText}
+                  placeholder="Give this analysis a title..."
+                  placeholderTextColor="#A08880"
+                  maxLength={100}
+                  autoFocus
+                />
+                <View style={r.notesActions}>
+                  <TouchableOpacity
+                    style={[r.notesBtn, r.cancelBtn]}
+                    onPress={handleCancelTitleEdit}
+                    activeOpacity={0.7}
+                  >
+                    <ThemedText style={r.cancelBtnText}>cancel</ThemedText>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[r.notesBtn, r.saveBtn]}
+                    onPress={handleSaveTitle}
+                    activeOpacity={0.7}
+                  >
+                    <ThemedText style={r.saveBtnText}>save</ThemedText>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : (
+              <View>
+                {latest.title ? (
+                  <ThemedText style={r.titleDisplayText}>{latest.title}</ThemedText>
+                ) : (
+                  <ThemedText style={r.noTitleText}>
+                    No title yet. Name this analysis.
+                  </ThemedText>
+                )}
+                <TouchableOpacity
+                  style={r.editNotesButton}
+                  onPress={() => setIsEditingTitle(true)}
+                  activeOpacity={0.7}
+                >
+                  <View style={r.editNotesIconCircle}>
+                    <Ionicons name="pencil" size={13} color="#8B6A55" />
+                  </View>
+                  <ThemedText style={r.editNotesText}>
+                    {latest.title ? "edit title" : "add title"}
+                  </ThemedText>
+                </TouchableOpacity>
+              </View>
+            )}
+          </InnerBlock>
+        </SectionCard>
         <SectionCard title="Notes" accent="warm">
           <InnerBlock>
             {isEditingNotes ? (
@@ -721,8 +792,18 @@ const r = StyleSheet.create({
     minHeight: 80,
     textAlignVertical: "top",
     backgroundColor: "#FFF",
+  },  titleInput: {
+    borderWidth: 1,
+    borderColor: "#E0D5C4",
+    borderRadius: 10,
+    padding: 12,
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#2E211B",
+    backgroundColor: "#FFF",
   },
-  notesActions: {
+  titleDisplayText: { fontSize: 14, fontWeight: "600", color: "#2E211B", lineHeight: 20 },
+  noTitleText: { fontSize: 13, color: "#A08880", fontStyle: "italic" },  notesActions: {
     flexDirection: "row",
     justifyContent: "flex-end",
     gap: 10,

@@ -25,13 +25,17 @@
         {
           "action": "VIEW",
           "data": [
-            { "scheme": "acidex" }
+            {
+              "scheme": "acidex"
+            }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ]
     },
-    
     "web": {
       "output": "static",
       "favicon": "./assets/images/favicon.png"
@@ -59,7 +63,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "829e2031-52f0-4b91-a8ac-63d3b55e9a29"
+        "projectId": "6eb569c4-27bc-4594-9ee9-efc0670c3834"
       }
     }
   }

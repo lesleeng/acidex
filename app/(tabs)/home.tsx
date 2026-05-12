@@ -1,38 +1,45 @@
-import { Image } from "expo-image";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import {
-  Modal,
-  Pressable,
-  StyleSheet,
-  Dimensions,
-  TouchableOpacity,
-  View,
-  FlatList,
-  NativeSyntheticEvent,
-  NativeScrollEvent,
-  ActivityIndicator,
-} from "react-native";
-import { useRouter } from "expo-router";
-import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { Ionicons } from "@expo/vector-icons";
-import { hasUsbDevice } from "@/src/services/usbService";
+import { maybeEnrichAnalysisRecordWithLlm } from "@/src/services/aiAnalysisService";
+import {
+    buildRuleBasedNarrative,
+    classifyRiskLevel,
+} from "@/src/services/analysisService";
 import { readSensorData } from "@/src/services/sensorService";
 import type {
-  ArduinoReadProgress,
-  ArduinoReadStage,
+    ArduinoReadProgress,
+    ArduinoReadStage,
+} from "@/src/services/usbService";
+import {
+  describeUsbDevice,
+  getFirstUsbDevice,
+  hasUsbDevice,
+  listUsbDevices,
+  requestUsbPermissionIfNeeded,
 } from "@/src/services/usbService";
 import { saveAnalysisRecord } from "@/src/store/analysisStore";
-import {
-  buildRuleBasedNarrative,
-  classifyRiskLevel,
-} from "@/src/services/analysisService";
 import type { AnalysisRecord } from "@/src/types/analysis";
+import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Image } from "expo-image";
+import { useRouter } from "expo-router";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+    ActivityIndicator,
+    Dimensions,
+    FlatList,
+    Modal,
+    NativeScrollEvent,
+    NativeSyntheticEvent,
+    Pressable,
+    StyleSheet,
+    TouchableOpacity,
+    View,
+} from "react-native";
 
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
-import { useThemeColor } from "@/hooks/use-theme-color";
 import Colors from "@/constants/colors";
+import { useThemeColor } from "@/hooks/use-theme-color";
 import StreakIcon from "../../assets/images/streak.svg";
 
 const { width } = Dimensions.get("window");
@@ -113,10 +120,10 @@ const factsData = [
 const loopedFacts = [...factsData, ...factsData, ...factsData];
 
 type FactType = (typeof factsData)[0];
-type AnalyzeStatus = "idle" | "no-device" | "analyzing" | "done" | "error";
+type AnalyzeStatus = "idle" | "no-device" | "usb-permission" | "analyzing" | "done" | "error";
 type StomachState = "Empty stomach" | "After meal" | null;
 
-const ANALYZE_STAGE_PROGRESS: Record<ArduinoReadStage | "persisting", number> = {
+const ANALYZE_STAGE_PROGRESS: Record<ArduinoReadStage | "persisting" | "llm", number> = {
   "device-found": 0.1,
   "port-opened": 0.2,
   "waiting-before-send": 0.3,
@@ -127,10 +134,11 @@ const ANALYZE_STAGE_PROGRESS: Record<ArduinoReadStage | "persisting", number> = 
   "arduino-stable": 0.82,
   "arduino-collecting": 0.9,
   "result-detected": 0.97,
+  llm: 0.985,
   persisting: 1,
 };
 
-const ANALYZE_STAGE_HINTS: Record<ArduinoReadStage | "persisting", string> = {
+const ANALYZE_STAGE_HINTS: Record<ArduinoReadStage | "persisting" | "llm", string> = {
   "device-found": "getting things ready",
   "port-opened": "starting up",
   "waiting-before-send": "settling in",
@@ -141,6 +149,7 @@ const ANALYZE_STAGE_HINTS: Record<ArduinoReadStage | "persisting", string> = {
   "arduino-stable": "holding a steady reading",
   "arduino-collecting": "wrapping up the sample",
   "result-detected": "almost there",
+  llm: "writing your insights",
   persisting: "putting everything together",
 };
 
@@ -150,6 +159,7 @@ const LAST_ANALYSIS_DATE_KEY = "acidex_last_analysis_date";
 export default function HomeScreen() {
   const router       = useRouter();
   const flatListRef  = useRef<FlatList<FactType>>(null);
+  const lastAnalyzeStageRef = useRef<ArduinoReadStage | "persisting" | "llm" | null>(null);
 
   const [avatarUrl,    setAvatarUrl]    = useState<string | null>(null);
   const [avatarIndex,  setAvatarIndex]  = useState<number | null>(null);
@@ -164,8 +174,9 @@ export default function HomeScreen() {
   const [stomachState,         setStomachState]         = useState<StomachState>(null);
   const [probeReady,           setProbeReady]           = useState(false);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
-  const [analyzeStage, setAnalyzeStage] = useState<ArduinoReadStage | "persisting" | null>(null);
+  const [analyzeStage, setAnalyzeStage] = useState<ArduinoReadStage | "persisting" | "llm" | null>(null);
   const [pendingRecord,        setPendingRecord]        = useState<AnalysisRecord | null>(null);
+  const [serialDebugLines, setSerialDebugLines] = useState<string[]>([]);
 
   const coffee = useThemeColor({}, "coffee");
   const text   = useThemeColor({}, "text");
@@ -245,6 +256,12 @@ export default function HomeScreen() {
 
   const refreshOtgStatus = async () => {
     try {
+      const devices = await listUsbDevices();
+      console.log(
+        "USB devices detected:",
+        devices.map((device) => describeUsbDevice(device))
+      );
+
       const connected = await hasUsbDevice();
       setIsOtgConnected(connected);
       return connected;
@@ -257,16 +274,52 @@ export default function HomeScreen() {
 
   const handleAnalyzePress = async () => {
     const hasOtg = await refreshOtgStatus();
+    if (!hasOtg) {
+      console.log("No USB serial device was detected before analyze.");
+    }
+
     setAnalyzeModalVisible(true);
     setAnalyzeError(null);
     setAnalyzeStage(null);
+    lastAnalyzeStageRef.current = null;
     setPendingRecord(null);
-    if (!hasOtg) { setAnalyzeStatus("no-device"); return; }
+    setSerialDebugLines([]);
+
+    if (!hasOtg) {
+      setAnalyzeStatus("no-device");
+      return;
+    }
+
+    const device = await getFirstUsbDevice();
+    if (!device) {
+      setAnalyzeStatus("no-device");
+      return;
+    }
+
+    const permissionGranted = await requestUsbPermissionIfNeeded(device);
+    if (!permissionGranted) {
+      setAnalyzeStatus("usb-permission");
+      return;
+    }
+
     setProbeReady(false);
     setAnalyzeStatus("analyzing");
     try {
       const record = await readSensorData((progress: ArduinoReadProgress) => {
-        setAnalyzeStage(progress.stage);
+        if (lastAnalyzeStageRef.current !== progress.stage) {
+          lastAnalyzeStageRef.current = progress.stage;
+          setAnalyzeStage(progress.stage);
+        }
+
+        if (progress.rawChunk) {
+          const cleaned = progress.rawChunk.replace(/\r/g, "").trim();
+          if (cleaned.length > 0) {
+            setSerialDebugLines((current) => {
+              const next = [...current, cleaned];
+              return next.slice(-12);
+            });
+          }
+        }
       });
 
       if (!record) {
@@ -313,7 +366,12 @@ export default function HomeScreen() {
       await saveAnalysisRecord(nextRecord);
       if (cancelled) return;
 
-      setPendingRecord(nextRecord);
+      // LLM enrichment is part of the loading experience so Results can render instantly.
+      setAnalyzeStage("llm");
+      const enriched = await maybeEnrichAnalysisRecordWithLlm(nextRecord);
+      if (cancelled) return;
+
+      setPendingRecord(enriched);
       setAnalyzeStatus("done");
     };
 
@@ -355,6 +413,7 @@ export default function HomeScreen() {
       setStomachState(null);
       setProbeReady(false);
       setPendingRecord(null);
+      setSerialDebugLines([]);
       setAnalyzeError(null);
       setAnalyzeStage(null);
     }
@@ -599,6 +658,64 @@ export default function HomeScreen() {
                 </>
               )}
 
+              {/* permission prompt */}
+              {analyzeStatus === "usb-permission" && (
+                <>
+                  <View style={[styles.analyzeIconCircle, { backgroundColor: "#FEF0D6" }]}>
+                    <Ionicons name="shield-checkmark-outline" size={28} color="#C38C49" />
+                  </View>
+                  <ThemedText style={[styles.analyzeModalTitle, { color: coffee }]}>
+                    allow usb access
+                  </ThemedText>
+                  <ThemedText style={styles.analyzeModalText}>
+                    Please allow access to the connected probe first, then tap continue to start analyzing.
+                  </ThemedText>
+                  <TouchableOpacity
+                    activeOpacity={0.85}
+                    style={[styles.actionButton, { backgroundColor: coffee }]}
+                    onPress={handleAnalyzePress}
+                  >
+                    <ThemedText style={styles.actionButtonText}>continue</ThemedText>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    style={styles.dismissLink}
+                    onPress={closeAnalyzeModal}
+                  >
+                    <ThemedText style={[styles.dismissLinkText, { color: coffee }]}>not now</ThemedText>
+                  </TouchableOpacity>
+                </>
+              )}
+
+              {/* error */}
+              {analyzeStatus === "error" && (
+                <>
+                  <View style={[styles.analyzeIconCircle, { backgroundColor: "#FDE8E8" }]}>
+                    <Ionicons name="alert-circle-outline" size={28} color="#D14B4B" />
+                  </View>
+                  <ThemedText style={[styles.analyzeModalTitle, { color: coffee }]}>
+                    analysis failed
+                  </ThemedText>
+                  <ThemedText style={styles.analyzeModalText}>
+                    {analyzeError ?? "The Arduino did not return a result in time. Please try again."}
+                  </ThemedText>
+                  <TouchableOpacity
+                    activeOpacity={0.85}
+                    style={[styles.actionButton, { backgroundColor: coffee }]}
+                    onPress={handleAnalyzePress}
+                  >
+                    <ThemedText style={styles.actionButtonText}>try again</ThemedText>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    style={styles.dismissLink}
+                    onPress={closeAnalyzeModal}
+                  >
+                    <ThemedText style={[styles.dismissLinkText, { color: coffee }]}>close</ThemedText>
+                  </TouchableOpacity>
+                </>
+              )}
+
               {/* analyzing — parallel stomach log */}
               {analyzeStatus === "analyzing" && (
                 <>
@@ -629,6 +746,24 @@ export default function HomeScreen() {
                       {analyzeHint}
                     </ThemedText>
                   </View>
+
+                  {serialDebugLines.length > 0 && (
+                    <View style={styles.serialDebugCard}>
+                      <View style={styles.serialDebugHeader}>
+                        <Ionicons name="terminal-outline" size={13} color="#8B5E3C" />
+                        <ThemedText style={styles.serialDebugTitle}>esp32 output</ThemedText>
+                      </View>
+                      <FlatList
+                        data={serialDebugLines}
+                        keyExtractor={(item, index) => `${index}-${item.slice(0, 12)}`}
+                        style={styles.serialDebugList}
+                        showsVerticalScrollIndicator={false}
+                        renderItem={({ item }) => (
+                          <ThemedText style={styles.serialDebugLine}>{item}</ThemedText>
+                        )}
+                      />
+                    </View>
+                  )}
 
                   {/* stomach log card */}
                   <View style={styles.stomachCard}>
@@ -937,5 +1072,36 @@ const styles = StyleSheet.create({
   },
   stomachHint: {
     fontSize: 11, color: "#A08880", marginTop: 10, textAlign: "center",
+  },
+  serialDebugCard: {
+    width: "100%",
+    backgroundColor: "#F8F1EA",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#E7D8CC",
+    padding: 12,
+    marginBottom: 16,
+  },
+  serialDebugHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 8,
+  },
+  serialDebugTitle: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#3C2C24",
+    textTransform: "lowercase",
+  },
+  serialDebugList: {
+    maxHeight: 120,
+  },
+  serialDebugLine: {
+    fontSize: 11,
+    lineHeight: 16,
+    color: "#5E4A40",
+    fontFamily: "monospace",
+    marginBottom: 4,
   },
 });

@@ -15,17 +15,26 @@ import {
 } from 'react-native'
 import { router } from 'expo-router'
 import { GoogleSignin } from '@react-native-google-signin/google-signin'
+import AsyncStorage from '@react-native-async-storage/async-storage'
+import { Ionicons } from '@expo/vector-icons'
 
 import Colors from '@/constants/colors'
-import { supabase } from '@/lib/supabase'
+import {
+  clearPersistedAuthSession,
+  setAuthSessionPersistenceEnabled,
+  supabase,
+} from '@/lib/supabase'
 import ShowPwIcon from '@/assets/images/show-pw.svg'
 import HidePwIcon from '@/assets/images/hide-pw.svg'
+
+const REMEMBER_ME_KEY = 'acidex_login_remember_me'
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [rememberMe, setRememberMe] = useState(true)
 
   const [emailFocused, setEmailFocused] = useState(false)
   const [passwordFocused, setPasswordFocused] = useState(false)
@@ -38,6 +47,21 @@ export default function LoginScreen() {
       webClientId:
         '409625553274-rdsbj4kjv3pb5hmpv39ggl5cupgvdpl9.apps.googleusercontent.com',
     })
+  }, [])
+
+  useEffect(() => {
+    const loadRememberMe = async () => {
+      try {
+        const stored = await AsyncStorage.getItem(REMEMBER_ME_KEY)
+        if (stored !== null) {
+          setRememberMe(stored === 'true')
+        }
+      } catch (error) {
+        console.log('load remember me error:', error)
+      }
+    }
+
+    loadRememberMe()
   }, [])
 
   useEffect(() => {
@@ -64,6 +88,7 @@ export default function LoginScreen() {
 
     setLoading(true)
     try {
+      setAuthSessionPersistenceEnabled(rememberMe)
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -73,6 +98,10 @@ export default function LoginScreen() {
       console.log('LOGIN error:', error)
 
       if (error) throw error
+
+      if (!rememberMe) {
+        await clearPersistedAuthSession()
+      }
 
       router.replace('/(tabs)/home')
     } catch (error: any) {
@@ -87,6 +116,7 @@ export default function LoginScreen() {
     setLoading(true)
 
     try {
+      setAuthSessionPersistenceEnabled(rememberMe)
       await GoogleSignin.hasPlayServices()
       const res = await GoogleSignin.signIn()
 
@@ -102,6 +132,10 @@ export default function LoginScreen() {
       console.log('GOOGLE LOGIN error:', error)
 
       if (error) throw error
+
+      if (!rememberMe) {
+        await clearPersistedAuthSession()
+      }
 
       router.replace('/(tabs)/home')
     } catch (e: any) {
@@ -228,6 +262,23 @@ export default function LoginScreen() {
               onPress={() => router.push('/(auth)/forgot-password')}
             >
               <Text style={styles.forgotPasswordText}>forgot password?</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              activeOpacity={0.85}
+              style={styles.rememberRow}
+              onPress={() => {
+                const nextValue = !rememberMe
+                setRememberMe(nextValue)
+                AsyncStorage.setItem(REMEMBER_ME_KEY, String(nextValue)).catch((error) => {
+                  console.log('save remember me error:', error)
+                })
+              }}
+            >
+              <View style={[styles.rememberBox, rememberMe && styles.rememberBoxChecked]}>
+                {rememberMe && <Ionicons name="checkmark" size={14} color={Colors.light.background} />}
+              </View>
+              <Text style={styles.rememberText}>remember me</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -361,6 +412,37 @@ const styles = StyleSheet.create({
 
   forgotPasswordText: {
     color: Colors.light.coffee,
+    fontSize: 14,
+    fontWeight: '500',
+  },
+
+  rememberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 10,
+    marginTop: 6,
+    marginBottom: 10,
+  },
+
+  rememberBox: {
+    width: 20,
+    height: 20,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#C9B8AC',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+  },
+
+  rememberBoxChecked: {
+    backgroundColor: Colors.light.coffee,
+    borderColor: Colors.light.coffee,
+  },
+
+  rememberText: {
+    color: Colors.light.text,
     fontSize: 14,
     fontWeight: '500',
   },

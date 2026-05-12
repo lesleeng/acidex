@@ -1,8 +1,7 @@
-import { mlTrainingSet, TrainingSample } from "../data/mlTrainingSet";
 import { mockAnalysisRecords } from "../data/analysisMock";
 import {
-  AnalysisRecord,
   AnalysisNarrative,
+  AnalysisRecord,
   BinaryAcidityLabel,
   MlModelKey,
   PHClassification,
@@ -49,8 +48,8 @@ export interface ModelEvaluationResult {
   metrics: ClassificationMetrics;
 }
 
-const LOGISTIC_REGRESSION_MODEL_KEY: MlModelKey = "logistic_regression";
-const LOGISTIC_REGRESSION_MODEL_NAME = "Logistic Regression";
+const DECISION_STUMP_MODEL_KEY: MlModelKey = "decision_stump";
+const DECISION_STUMP_MODEL_NAME = "Decision Stump (coffee.csv)";
 
 function sortNewestFirst(records: AnalysisRecord[]) {
   return [...records].sort(
@@ -172,180 +171,39 @@ export function classifyRiskLevel(
   return "Low Risk";
 }
 
-function getMean(values: number[]) {
-  return values.reduce((sum, value) => sum + value, 0) / (values.length || 1);
-}
-
-function getStandardDeviation(values: number[], mean: number) {
-  const variance =
-    values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / (values.length || 1);
-  return Math.sqrt(variance) || 1;
-}
-
-function sigmoid(value: number) {
-  return 1 / (1 + Math.exp(-value));
-}
-
-type LogisticRegressionModel = {
-  intercept: number;
-  phWeight: number;
-  stabilizationWeight: number;
-  phMean: number;
-  phStd: number;
-  stabilizationMean: number;
-  stabilizationStd: number;
+type DecisionStumpModel = {
+  threshold: number;
+  leftAcidicProbability: number;
+  rightAcidicProbability: number;
 };
 
-function trainLogisticRegression(trainingSet: TrainingSample[]): LogisticRegressionModel {
-  const phValues = trainingSet.map((item) => item.ph);
-  const stabilizationValues = trainingSet.map((item) => item.stabilizationTimeSec);
-  const phMean = getMean(phValues);
-  const phStd = getStandardDeviation(phValues, phMean);
-  const stabilizationMean = getMean(stabilizationValues);
-  const stabilizationStd = getStandardDeviation(
-    stabilizationValues,
-    stabilizationMean
-  );
+// Trained offline from `coffee.csv` using `prototype_pH` only.
+// Script: `node scripts/train-decision-stump-from-coffee-csv.js`
+const COFFEE_CSV_DECISION_STUMP_MODEL: DecisionStumpModel = {
+  threshold: 5.035,
+  leftAcidicProbability: 0.9666666666666667,
+  rightAcidicProbability: 0,
+};
 
-  let intercept = 0;
-  let phWeight = 0;
-  let stabilizationWeight = 0;
-
-  const learningRate = 0.15;
-  const iterations = 2500;
-
-  for (let i = 0; i < iterations; i++) {
-    let interceptGradient = 0;
-    let phGradient = 0;
-    let stabilizationGradient = 0;
-
-    trainingSet.forEach((sample) => {
-      const normalizedPh = (sample.ph - phMean) / phStd;
-      const normalizedStabilization =
-        (sample.stabilizationTimeSec - stabilizationMean) / stabilizationStd;
-      const expected = sample.label === "Acidic" ? 1 : 0;
-      const predicted = sigmoid(
-        intercept + phWeight * normalizedPh + stabilizationWeight * normalizedStabilization
-      );
-      const error = predicted - expected;
-
-      interceptGradient += error;
-      phGradient += error * normalizedPh;
-      stabilizationGradient += error * normalizedStabilization;
-    });
-
-    intercept -= (learningRate * interceptGradient) / trainingSet.length;
-    phWeight -= (learningRate * phGradient) / trainingSet.length;
-    stabilizationWeight -= (learningRate * stabilizationGradient) / trainingSet.length;
-  }
-
-  return {
-    intercept,
-    phWeight,
-    stabilizationWeight,
-    phMean,
-    phStd,
-    stabilizationMean,
-    stabilizationStd,
-  };
-}
-
-function predictWithLogisticRegression(
+function predictWithDecisionStump(
   reading: Pick<SensorReading, "ph" | "stabilizationTimeSec">,
-  model: LogisticRegressionModel
+  model: DecisionStumpModel
 ): BinaryClassificationResult {
-  const normalizedPh = (reading.ph - model.phMean) / model.phStd;
-  const normalizedStabilization =
-    (reading.stabilizationTimeSec - model.stabilizationMean) / model.stabilizationStd;
-  const acidicProbability = sigmoid(
-    model.intercept +
-      model.phWeight * normalizedPh +
-      model.stabilizationWeight * normalizedStabilization
-  );
+  const acidicProbability =
+    reading.ph <= model.threshold ? model.leftAcidicProbability : model.rightAcidicProbability;
 
   return {
     label: acidicProbability >= 0.5 ? "Acidic" : "Non-Acidic",
     confidence: Math.max(acidicProbability, 1 - acidicProbability),
-    modelKey: LOGISTIC_REGRESSION_MODEL_KEY,
-    modelName: LOGISTIC_REGRESSION_MODEL_NAME,
-  };
-}
-
-function classifyBinaryAcidityWithTrainingSet(
-  reading: Pick<SensorReading, "ph" | "stabilizationTimeSec">,
-  trainingSet: TrainingSample[]
-): BinaryClassificationResult {
-  const model = trainLogisticRegression(trainingSet);
-  return predictWithLogisticRegression(reading, model);
-}
-
-function evaluateLogisticRegression(
-  trainingSet: TrainingSample[],
-  evaluationMode: "self_test" | "leave_one_out"
-): ModelEvaluationResult {
-
-  const matrix = trainingSet.reduce<ConfusionMatrix>(
-    (acc, sample, index) => {
-      const subset =
-        evaluationMode === "leave_one_out"
-          ? trainingSet.filter((_, sampleIndex) => sampleIndex !== index)
-          : trainingSet;
-
-      const predicted = classifyBinaryAcidityWithTrainingSet(sample, subset).label;
-
-      if (predicted === "Acidic" && sample.label === "Acidic") acc.tp++;
-      else if (predicted === "Non-Acidic" && sample.label === "Non-Acidic") acc.tn++;
-      else if (predicted === "Acidic" && sample.label === "Non-Acidic") acc.fp++;
-      else acc.fn++;
-
-      return acc;
-    },
-    { tp: 0, tn: 0, fp: 0, fn: 0 }
-  );
-
-  return {
-    key: LOGISTIC_REGRESSION_MODEL_KEY,
-    name: LOGISTIC_REGRESSION_MODEL_NAME,
-    metrics: buildMetrics(matrix),
+    modelKey: DECISION_STUMP_MODEL_KEY,
+    modelName: DECISION_STUMP_MODEL_NAME,
   };
 }
 
 export function classifyBinaryAcidity(
   reading: Pick<SensorReading, "ph" | "stabilizationTimeSec">
 ) {
-  const prediction = classifyBinaryAcidityWithTrainingSet(reading, mlTrainingSet);
-
-  return {
-    ...prediction,
-    validationMetrics: evaluateTrainingSetLeaveOneOut(),
-  };
-}
-
-function divideSafe(numerator: number, denominator: number) {
-  return denominator === 0 ? 0 : numerator / denominator;
-}
-
-function buildMetrics(matrix: ConfusionMatrix): ClassificationMetrics {
-  const total = matrix.tp + matrix.tn + matrix.fp + matrix.fn;
-  const precision = divideSafe(matrix.tp, matrix.tp + matrix.fp);
-  const recall = divideSafe(matrix.tp, matrix.tp + matrix.fn);
-
-  return {
-    ...matrix,
-    accuracy: divideSafe(matrix.tp + matrix.tn, total),
-    precision,
-    recall,
-    f1Score: divideSafe(2 * precision * recall, precision + recall),
-    total,
-  };
-}
-
-export function evaluateTrainingSetSelfTest(): ClassificationMetrics {
-  return evaluateLogisticRegression(mlTrainingSet, "self_test").metrics;
-}
-
-export function evaluateTrainingSetLeaveOneOut(): ClassificationMetrics {
-  return evaluateLogisticRegression(mlTrainingSet, "leave_one_out").metrics;
+  return predictWithDecisionStump(reading, COFFEE_CSV_DECISION_STUMP_MODEL);
 }
 
 export function buildAnalysisRecord(

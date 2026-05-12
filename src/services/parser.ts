@@ -1,79 +1,125 @@
 import { SensorReading } from "../types/analysis";
 
-function extractNumber(raw: string, label: string): number | null {
-  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = raw.match(new RegExp(`${escaped}\\s*:?\\s*(-?\\d+(?:\\.\\d+)?)`, "i"));
-  if (!match) return null;
+export type CalibrationBuffer = "low" | "high";
 
-  const value = Number(match[1]);
-  return Number.isFinite(value) ? value : null;
-}
-
-function extractText(raw: string, label: string): string | null {
-  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = raw.match(new RegExp(`${escaped}\\s*:?\\s*([^\\r\\n]+)`, "i"));
-  return match?.[1]?.trim() ?? null;
-}
+export type CalibrationEvent =
+  | {
+      type: "buffer";
+      buffer: CalibrationBuffer;
+      voltage: number;
+      ph?: number;
+      samplesCollected: number;
+      stabilizationTimeSec: number;
+    }
+  | {
+      type: "current";
+      slope: number;
+      intercept: number;
+    }
+  | {
+      type: "updated";
+      slope: number;
+      intercept: number;
+    };
 
 export function parseArduinoResultBlock(raw: string): SensorReading | null {
   const jsonMatch = raw.match(/RESULT_JSON:(\{.*?\})/s);
-  if (jsonMatch) {
+  if (!jsonMatch) return null;
+
+  try {
+    const parsed = JSON.parse(jsonMatch[1]) as {
+      sample?: string;
+      avgVoltage?: number;
+      pH?: number;
+      samplesCollected?: number;
+      stabilizationTimeSec?: number;
+    };
+
+    if (
+      typeof parsed.sample === "string" &&
+      typeof parsed.avgVoltage === "number" &&
+      typeof parsed.pH === "number" &&
+      typeof parsed.samplesCollected === "number" &&
+      typeof parsed.stabilizationTimeSec === "number" &&
+      parsed.stabilizationTimeSec >= 0
+    ) {
+      return {
+        sampleId: parsed.sample,
+        averageVoltage: parsed.avgVoltage,
+        ph: parsed.pH,
+        samplesCollected: parsed.samplesCollected,
+        stabilizationTimeSec: parsed.stabilizationTimeSec,
+      };
+    }
+  } catch (error) {
+    console.error("parseArduinoResultBlock JSON parse error:", {
+      error: error instanceof Error ? error.message : String(error),
+      raw: raw.substring(0, 200),
+    });
+  }
+
+  return null;
+}
+
+export function parseArduinoCalibrationBlock(raw: string): CalibrationEvent | null {
+  const bufferMatch = raw.match(/CAL_JSON:(\{.*?\})/s);
+  if (bufferMatch) {
     try {
-      const parsed = JSON.parse(jsonMatch[1]) as {
-        sample?: string;
-        avgVoltage?: number;
-        pH?: number;
+      const parsed = JSON.parse(bufferMatch[1]) as {
+        buffer?: string;
+        voltage?: number;
+        pH?: number | null;
         samplesCollected?: number;
         stabilizationTimeSec?: number;
       };
 
+      const buffer =
+        typeof parsed.buffer === "string" ? parsed.buffer.trim().toLowerCase() : "";
+
       if (
-        parsed.sample &&
-        typeof parsed.avgVoltage === "number" &&
-        typeof parsed.pH === "number" &&
+        (buffer === "low" || buffer === "high") &&
+        typeof parsed.voltage === "number" &&
         typeof parsed.samplesCollected === "number" &&
-        typeof parsed.stabilizationTimeSec === "number" &&
-        parsed.stabilizationTimeSec >= 0
+        typeof parsed.stabilizationTimeSec === "number"
       ) {
+        const ph = typeof parsed.pH === "number" && Number.isFinite(parsed.pH) ? parsed.pH : undefined;
         return {
-          sampleId: parsed.sample,
-          averageVoltage: parsed.avgVoltage,
-          ph: parsed.pH,
+          type: "buffer",
+          buffer,
+          voltage: parsed.voltage,
+          ph,
           samplesCollected: parsed.samplesCollected,
           stabilizationTimeSec: parsed.stabilizationTimeSec,
         };
       }
-    } catch (error) {
-      console.error("parseArduinoResultBlock JSON parse error:", {
-        error: error instanceof Error ? error.message : String(error),
-        raw: raw.substring(0, 200),
-      });
+    } catch {
+      return null;
     }
   }
 
-  if (!raw.includes("=== RESULT ===")) return null;
-
-  const sampleId = extractText(raw, "Sample");
-  const averageVoltage = extractNumber(raw, "Avg Voltage");
-  const ph = extractNumber(raw, "Calculated pH");
-  const samplesCollected = extractNumber(raw, "Samples Collected");
-  const stabilizationTimeSec = extractNumber(raw, "Voltage stabilized at");
-
-  if (
-    !sampleId ||
-    averageVoltage === null ||
-    ph === null ||
-    samplesCollected === null ||
-    stabilizationTimeSec === null
-  ) {
-    return null;
+  const currentMatch = raw.match(/CAL_CURRENT_JSON:(\{.*?\})/s);
+  if (currentMatch) {
+    try {
+      const parsed = JSON.parse(currentMatch[1]) as { slope?: number; intercept?: number };
+      if (typeof parsed.slope === "number" && typeof parsed.intercept === "number") {
+        return { type: "current", slope: parsed.slope, intercept: parsed.intercept };
+      }
+    } catch {
+      return null;
+    }
   }
 
-  return {
-    sampleId,
-    averageVoltage,
-    ph,
-    samplesCollected,
-    stabilizationTimeSec,
-  };
+  const updatedMatch = raw.match(/CAL_UPDATED_JSON:(\{.*?\})/s);
+  if (updatedMatch) {
+    try {
+      const parsed = JSON.parse(updatedMatch[1]) as { slope?: number; intercept?: number };
+      if (typeof parsed.slope === "number" && typeof parsed.intercept === "number") {
+        return { type: "updated", slope: parsed.slope, intercept: parsed.intercept };
+      }
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
 }
