@@ -1,6 +1,5 @@
 import { supabase } from "@/lib/supabase";
 import { Ionicons } from "@expo/vector-icons";
-import { GoogleSignin } from "@react-native-google-signin/google-signin";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
@@ -144,7 +143,6 @@ export default function ProfileScreen() {
 
   const handleSwitchAccount = async () => {
     try {
-      await GoogleSignin.signOut();
       await supabase.auth.signOut();
       router.replace("/(auth)/login");
     } catch (error) {
@@ -156,12 +154,6 @@ export default function ProfileScreen() {
   const handleLogout = async () => {
     try {
       await supabase.auth.signOut();
-
-      try {
-        await GoogleSignin.signOut();
-      } catch (error) {
-        console.log("google sign-out skipped:", error);
-      }
 
       router.replace("/(auth)/login");
     } catch (error) {

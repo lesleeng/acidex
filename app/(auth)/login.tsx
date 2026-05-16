@@ -1,33 +1,34 @@
-import React, { useEffect, useState } from 'react'
-import { Image } from 'expo-image'
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  SafeAreaView,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  Alert,
-  Animated,
-} from 'react-native'
-import { router } from 'expo-router'
-import { GoogleSignin } from '@react-native-google-signin/google-signin'
-import AsyncStorage from '@react-native-async-storage/async-storage'
 import { Ionicons } from '@expo/vector-icons'
+import AsyncStorage from '@react-native-async-storage/async-storage'
+import { Image } from 'expo-image'
+import * as WebBrowser from 'expo-web-browser'
+import { router } from 'expo-router'
+import React, { useEffect, useState } from 'react'
+import {
+    Alert,
+    Animated,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
+} from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 
+import HidePwIcon from '@/assets/images/hide-pw.svg'
+import ShowPwIcon from '@/assets/images/show-pw.svg'
 import Colors from '@/constants/colors'
 import {
-  clearPersistedAuthSession,
-  setAuthSessionPersistenceEnabled,
-  supabase,
+    clearPersistedAuthSession,
+    setAuthSessionPersistenceEnabled,
+    supabase,
 } from '@/lib/supabase'
-import ShowPwIcon from '@/assets/images/show-pw.svg'
-import HidePwIcon from '@/assets/images/hide-pw.svg'
 
 const REMEMBER_ME_KEY = 'acidex_login_remember_me'
+const OAUTH_REDIRECT_URL = 'acidex://callback'
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('')
@@ -41,13 +42,6 @@ export default function LoginScreen() {
 
   const emailLabelAnim = useState(new Animated.Value(0))[0]
   const passwordLabelAnim = useState(new Animated.Value(0))[0]
-
-  useEffect(() => {
-    GoogleSignin.configure({
-      webClientId:
-        '409625553274-rdsbj4kjv3pb5hmpv39ggl5cupgvdpl9.apps.googleusercontent.com',
-    })
-  }, [])
 
   useEffect(() => {
     const loadRememberMe = async () => {
@@ -117,29 +111,17 @@ export default function LoginScreen() {
 
     try {
       setAuthSessionPersistenceEnabled(rememberMe)
-      await GoogleSignin.hasPlayServices()
-      const res = await GoogleSignin.signIn()
-
-      const idToken = (res as any)?.data?.idToken ?? (res as any)?.idToken
-      if (!idToken) throw new Error('No idToken returned by Google')
-
-      const { data, error } = await supabase.auth.signInWithIdToken({
+      const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
-        token: idToken,
+        options: { redirectTo: OAUTH_REDIRECT_URL },
       })
 
-      console.log('GOOGLE LOGIN data:', data)
-      console.log('GOOGLE LOGIN error:', error)
-
       if (error) throw error
+      if (!data?.url) throw new Error('No OAuth URL returned')
 
-      if (!rememberMe) {
-        await clearPersistedAuthSession()
-      }
-
-      router.replace('/(tabs)/home')
+      await WebBrowser.openAuthSessionAsync(data.url, OAUTH_REDIRECT_URL)
     } catch (e: any) {
-      console.log('Google native sign-in error:', e)
+      console.log('Google OAuth error:', e)
       Alert.alert('Google Sign-In Failed', e?.message ?? 'Unknown error')
     } finally {
       setLoading(false)

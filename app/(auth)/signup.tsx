@@ -1,28 +1,29 @@
-import AsyncStorage from '@react-native-async-storage/async-storage'
-import { GoogleSignin } from '@react-native-google-signin/google-signin'
-import { Image } from 'expo-image'
 import Colors from '@/constants/colors'
+import AsyncStorage from '@react-native-async-storage/async-storage'
+import { Image } from 'expo-image'
+import * as WebBrowser from 'expo-web-browser'
 
+import { router } from 'expo-router'
 import React, { useEffect, useState } from 'react'
 import {
-  Alert,
-  Animated,
-  KeyboardAvoidingView,
-  Platform,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    Alert,
+    Animated,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native'
-import { router } from 'expo-router'
+import { SafeAreaView } from 'react-native-safe-area-context'
 
-import { supabase } from '@/lib/supabase'
-import { AppIcon } from "@/components/app-icon"
-import ShowPwIcon from '@/assets/images/show-pw.svg'
 import HidePwIcon from '@/assets/images/hide-pw.svg'
+import ShowPwIcon from '@/assets/images/show-pw.svg'
+import { supabase } from '@/lib/supabase'
+
+const OAUTH_REDIRECT_URL = 'acidex://callback'
 
 export default function SignUpScreen() {
   const [email, setEmail] = useState('')
@@ -45,11 +46,6 @@ export default function SignUpScreen() {
       const v = await AsyncStorage.getItem('test_key')
       console.log('AsyncStorage test:', v)
     })()
-
-    GoogleSignin.configure({
-      webClientId:
-        '409625553274-rdsbj4kjv3pb5hmpv39ggl5cupgvdpl9.apps.googleusercontent.com',
-    })
   }, [])
 
   useEffect(() => {
@@ -125,25 +121,17 @@ export default function SignUpScreen() {
     setLoading(true)
 
     try {
-      await GoogleSignin.hasPlayServices()
-      const res = await GoogleSignin.signIn()
-
-      const idToken = (res as any)?.data?.idToken ?? (res as any)?.idToken
-      if (!idToken) throw new Error('No idToken returned by Google')
-
-      const { data, error } = await supabase.auth.signInWithIdToken({
+      const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
-        token: idToken,
+        options: { redirectTo: OAUTH_REDIRECT_URL },
       })
 
-      console.log('GOOGLE signInWithIdToken data:', data)
-      console.log('GOOGLE signInWithIdToken error:', error)
-
       if (error) throw error
+      if (!data?.url) throw new Error('No OAuth URL returned')
 
-      router.replace('/(tabs)/home')
+      await WebBrowser.openAuthSessionAsync(data.url, OAUTH_REDIRECT_URL)
     } catch (e: any) {
-      console.log('Google native sign-in error:', e)
+      console.log('Google OAuth error:', e)
       Alert.alert('Google Sign-In Failed', e?.message ?? 'Unknown error')
     } finally {
       setLoading(false)

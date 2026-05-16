@@ -1,18 +1,18 @@
- import React, { useState, useEffect } from 'react'
+ import { router } from 'expo-router'
+import React, { useEffect, useState } from 'react'
 import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  SafeAreaView,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  Alert,
-  ActivityIndicator,
+    ActivityIndicator,
+    Alert,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native'
-import { router } from 'expo-router'
+import { SafeAreaView } from 'react-native-safe-area-context'
 
 import Colors from '@/constants/colors'
 import { supabase } from '@/lib/supabase'
