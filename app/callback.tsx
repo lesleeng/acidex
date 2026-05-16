@@ -1,7 +1,7 @@
-import { useEffect, useRef } from 'react'
-import { View, ActivityIndicator, Text, Alert } from 'react-native'
-import { useLocalSearchParams, router } from 'expo-router'
 import { supabase } from '@/lib/supabase'
+import { router, useLocalSearchParams } from 'expo-router'
+import { useEffect, useRef } from 'react'
+import { ActivityIndicator, Alert, Text, View } from 'react-native'
 
 export default function CallbackScreen() {
   const params = useLocalSearchParams()
@@ -15,14 +15,13 @@ export default function CallbackScreen() {
       try {
         console.log('CALLBACK params:', params)
 
-        const qs = new URLSearchParams(params as any).toString()
-        if (!qs) throw new Error('Missing callback query params (code/state)')
+        const codeParam = params.code
+        const code = Array.isArray(codeParam) ? codeParam[0] : codeParam
+        if (!code) throw new Error('Missing callback query param: code')
 
-        // Must match your redirectTo: acidex:///callback
-        const url = `acidex:///callback?${qs}`
-        console.log('CALLBACK exchange URL:', url)
+        console.log('CALLBACK exchange code:', code)
 
-        const { error } = await supabase.auth.exchangeCodeForSession(url)
+        const { error } = await supabase.auth.exchangeCodeForSession(code)
         console.log('CALLBACK exchange error:', error)
 
         if (error) {
@@ -35,9 +34,10 @@ export default function CallbackScreen() {
         console.log('CALLBACK session exists:', !!data.session)
 
         router.replace(data.session ? '/(tabs)/home' : '/(auth)/login')
-      } catch (e: any) {
-        console.log('CALLBACK catch:', e?.message ?? e)
-        Alert.alert('Login Failed', e?.message ?? 'Unknown error')
+      } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : 'Unknown error'
+        console.log('CALLBACK catch:', message)
+        Alert.alert('Login Failed', message)
         router.replace('/(auth)/login')
       }
     })()

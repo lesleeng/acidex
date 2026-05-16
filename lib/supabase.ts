@@ -1,6 +1,7 @@
-import 'react-native-url-polyfill/auto'
+import 'react-native-url-polyfill/auto.js'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { createClient } from '@supabase/supabase-js'
+import process from "node:process";
 
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL!
 const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!
@@ -12,7 +13,7 @@ function isSupabaseAuthKey(key: string) {
 }
 
 async function removePersistedAuthSession() {
-  const keys = await AsyncStorage.getAllKeys()
+  const keys = AsyncStorage.getAllKeys() || []
   const authKeys = keys.filter(isSupabaseAuthKey)
   if (authKeys.length > 0) {
     await AsyncStorage.multiRemove(authKeys)
@@ -20,15 +21,19 @@ async function removePersistedAuthSession() {
 }
 
 const authStorage = {
-  getItem: (key: string) => AsyncStorage.getItem(key),
-  setItem: (key: string, value: string) => {
+  getItem: async (key: string) => {
+    return AsyncStorage.getItem(key)
+  },
+  setItem: async (key: string, value: string) => {
     if (!persistAuthSession && isSupabaseAuthKey(key)) {
-      return Promise.resolve()
+      return
     }
 
     return AsyncStorage.setItem(key, value)
   },
-  removeItem: (key: string) => AsyncStorage.removeItem(key),
+  removeItem: async (key: string) => {
+    return AsyncStorage.removeItem(key)
+  },
 }
 
 export function setAuthSessionPersistenceEnabled(enabled: boolean) {
@@ -41,12 +46,13 @@ export async function clearPersistedAuthSession() {
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
-    storage: authStorage,
+    //storage: authStorage,
+    storage: AsyncStorage,
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: false,
     // Use implicit flow for password reset to work properly
     // PKCE flow can cause issues with password reset tokens
-    flowType: 'implicit',
+    flowType: 'pkce',
   },
 })
