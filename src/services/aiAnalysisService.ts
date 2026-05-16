@@ -65,27 +65,63 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
   });
 }
 
+function toNonEmptyString(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function toStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0).map((item) => item.trim());
+}
+
+function pickFirstString(value: Record<string, unknown>, keys: string[]): string | null {
+  for (const key of keys) {
+    const candidate = toNonEmptyString(value[key]);
+    if (candidate) return candidate;
+  }
+  return null;
+}
+
 function normalizeNarrative(data: unknown): AnalysisNarrative | null {
-  if (!data || typeof data !== "object") return null;
+  let value: Record<string, unknown> | null = null;
 
-  const value = data as Record<string, unknown>;
-  
-  // Extract fields from LLM response, allowing for flexible formatting
-  const summary = typeof value.summary === "string" ? value.summary.trim() : "";
-  const likelyEffectTitle =
-    typeof value.likelyEffectTitle === "string" ? value.likelyEffectTitle.trim() : "";
-  const advisory = typeof value.advisory === "string" ? value.advisory.trim() : "";
-  const safeTiming = typeof value.safeTiming === "string" ? value.safeTiming.trim() : "";
+  if (typeof data === "string") {
+    try {
+      const parsed = JSON.parse(data);
+      if (parsed && typeof parsed === "object") {
+        value = parsed as Record<string, unknown>;
+      }
+    } catch {
+      return null;
+    }
+  } else if (data && typeof data === "object") {
+    value = data as Record<string, unknown>;
+  }
 
-  const likelyEffectItems = Array.isArray(value.likelyEffectItems)
-    ? value.likelyEffectItems.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
-    : [];
-  const tips = Array.isArray(value.tips)
-    ? value.tips.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
-    : [];
-  const impactItems = Array.isArray(value.impactItems)
-    ? value.impactItems.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
-    : [];
+  if (!value) return null;
+
+  const narrativeValue =
+    value.narrative && typeof value.narrative === "object"
+      ? (value.narrative as Record<string, unknown>)
+      : value;
+
+  const summary = pickFirstString(narrativeValue, ["summary", "Summary"]);
+  const likelyEffectTitle = pickFirstString(narrativeValue, [
+    "likelyEffectTitle",
+    "likely_effect_title",
+    "effectTitle",
+    "effect_title",
+  ]);
+  const advisory = pickFirstString(narrativeValue, ["advisory", "advice"]);
+  const safeTiming = pickFirstString(narrativeValue, ["safeTiming", "safe_timing", "timing"]);
+
+  const likelyEffectItems = toStringArray(
+    narrativeValue.likelyEffectItems ?? narrativeValue.likely_effect_items ?? narrativeValue.effects
+  );
+  const tips = toStringArray(narrativeValue.tips ?? narrativeValue.tipItems ?? narrativeValue.recommendations);
+  const impactItems = toStringArray(
+    narrativeValue.impactItems ?? narrativeValue.impact_items ?? narrativeValue.impacts
+  );
 
   // Require at least the core summary field from LLM
   if (!summary) {
@@ -150,7 +186,9 @@ export async function maybeEnrichAnalysisRecordWithLlm(
 
     const narrative = normalizeNarrative(data);
     if (!narrative) {
-      console.warn("LLM returned invalid narrative structure, falling back to rules");
+      console.warn("LLM returned invalid narrative structure, falling back to rules", {
+        keys: data && typeof data === "object" ? Object.keys(data as Record<string, unknown>) : typeof data,
+      });
       return record.narrative ? record : { ...record, narrative: buildRuleBasedNarrative(record) };
     }
 

@@ -1,7 +1,6 @@
 import 'react-native-url-polyfill/auto.js'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { createClient } from '@supabase/supabase-js'
-import process from "node:process";
 
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL!
 const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!
@@ -13,7 +12,7 @@ function isSupabaseAuthKey(key: string) {
 }
 
 async function removePersistedAuthSession() {
-  const keys = AsyncStorage.getAllKeys() || []
+  const keys = await AsyncStorage.getAllKeys()
   const authKeys = keys.filter(isSupabaseAuthKey)
   if (authKeys.length > 0) {
     await AsyncStorage.multiRemove(authKeys)

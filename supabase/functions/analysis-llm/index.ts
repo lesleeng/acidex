@@ -19,6 +19,73 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+function toNonEmptyString(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function toStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    .map((item) => item.trim());
+}
+
+function normalizeNarrative(data: unknown) {
+  let value: Record<string, unknown> | null = null;
+
+  if (typeof data === "string") {
+    try {
+      const parsed = JSON.parse(data);
+      if (parsed && typeof parsed === "object") {
+        value = parsed as Record<string, unknown>;
+      }
+    } catch {
+      return null;
+    }
+  } else if (data && typeof data === "object") {
+    value = data as Record<string, unknown>;
+  }
+
+  if (!value) return null;
+
+  const narrativeValue =
+    value.narrative && typeof value.narrative === "object"
+      ? (value.narrative as Record<string, unknown>)
+      : value;
+
+  const summary =
+    toNonEmptyString(narrativeValue.summary) ??
+    toNonEmptyString(narrativeValue.Summary) ??
+    toNonEmptyString(narrativeValue.message);
+
+  if (!summary) return null;
+
+  return {
+    summary,
+    likelyEffectTitle:
+      toNonEmptyString(narrativeValue.likelyEffectTitle) ??
+      toNonEmptyString(narrativeValue.likely_effect_title) ??
+      toNonEmptyString(narrativeValue.effectTitle) ??
+      "Effects",
+    likelyEffectItems: toStringArray(
+      narrativeValue.likelyEffectItems ?? narrativeValue.likely_effect_items ?? narrativeValue.effects
+    ),
+    advisory:
+      toNonEmptyString(narrativeValue.advisory) ??
+      toNonEmptyString(narrativeValue.advice) ??
+      "Consult health professionals if needed",
+    tips: toStringArray(narrativeValue.tips ?? narrativeValue.tipItems ?? narrativeValue.recommendations),
+    safeTiming:
+      toNonEmptyString(narrativeValue.safeTiming) ??
+      toNonEmptyString(narrativeValue.safe_timing) ??
+      toNonEmptyString(narrativeValue.timing) ??
+      "As needed",
+    impactItems: toStringArray(
+      narrativeValue.impactItems ?? narrativeValue.impact_items ?? narrativeValue.impacts
+    ),
+  };
+}
+
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -50,7 +117,8 @@ Deno.serve(async (request) => {
       `Risk level: ${record.riskLevel ?? "Unknown"}`,
       `Stomach state: ${record.stomachState ?? "Unknown"}`,
       `Cups today: ${record.cupsToday ?? "Unknown"}`,
-      `Stabilization time: ${record.stabilizationTimeSec ?? "Unknown"}`,      `Average voltage: ${record.averageVoltage ?? "Unknown"}`,
+      `Stabilization time: ${record.stabilizationTimeSec ?? "Unknown"}`,
+      `Average voltage: ${record.averageVoltage ?? "Unknown"}`,
       `Samples collected: ${record.samplesCollected ?? "Unknown"}`,
     ].join("\n");
 
@@ -90,7 +158,11 @@ Deno.serve(async (request) => {
       throw new Error("Groq response did not include valid content.");
     }
 
-    const narrative = JSON.parse(outputText) as Record<string, unknown>;
+    const narrative = normalizeNarrative(outputText);
+    if (!narrative) {
+      throw new Error("Groq response did not match the required narrative structure.");
+    }
+
     return Response.json(
       {
         ...narrative,

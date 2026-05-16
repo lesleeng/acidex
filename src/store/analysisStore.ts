@@ -1,5 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
+import { BookmarkStore } from "../data/bookmarkStore";
+import { syncHistoryRecordToSupabase } from "../services/historySync";
 import { AnalysisRecord } from "../types/analysis";
 
 const LATEST_ANALYSIS_KEY = "acidex_latest_analysis";
@@ -48,6 +50,8 @@ export async function saveAnalysisRecord(record: AnalysisRecord): Promise<void> 
       [LATEST_ANALYSIS_KEY, JSON.stringify(record)],
       [ANALYSIS_HISTORY_KEY, JSON.stringify(nextHistory)],
     ]);
+
+    await syncHistoryRecordToSupabase(record, BookmarkStore.isBookmarked(record.id));
   } catch (error) {
     console.log("saveAnalysisRecord error:", error);
   }

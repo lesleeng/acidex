@@ -19,6 +19,7 @@ import {
 } from "@/src/services/aiAnalysisService";
 import {
 } from "@/src/services/analysisService";
+import { syncHistoryRecordToSupabase } from "@/src/services/historySync";
 import { getLatestCachedAnalysis, getLatestStoredAnalysis, saveAnalysisRecord } from "@/src/store/analysisStore";
 import { AnalysisNarrative, AnalysisRecord } from "@/src/types/analysis";
 
@@ -398,12 +399,14 @@ export default function ResultsScreen() {
     if (isBookmarked) {
       BookmarkStore.remove(latest.id);
       setIsBookmarked(false);
+      void syncHistoryRecordToSupabase(latest, false);
       showToast("unbookmark");
       return;
     }
 
     BookmarkStore.add(latest);
     setIsBookmarked(true);
+    void syncHistoryRecordToSupabase(latest, true);
     showToast("bookmark");
   };
 
