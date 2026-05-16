@@ -1,7 +1,5 @@
 // constants/Colors.ts
 
-import { Button } from "@react-navigation/elements";
-
 export const Colors = {
   light: {
     background: "#F5EEEE",      // LIGHT_BG

@@ -2,20 +2,38 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import * as WebBrowser from 'expo-web-browser';
 import 'react-native-reanimated';
-import * as WebBrowser from 'expo-web-browser'
-WebBrowser.maybeCompleteAuthSession()
 import "../lib/icons";
+import { useEffect } from 'react';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import Colors from '@/constants/colors';
+import { BookmarkStore } from '@/src/data/bookmarkStore';
+import { CollectionStore } from '@/src/data/collectionStore';
+import { flushQueuedHistorySync, loadSyncStatus } from '@/src/services/historySync';
+
+WebBrowser.maybeCompleteAuthSession();
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
+  useEffect(() => {
+    void BookmarkStore.load();
+    void CollectionStore.load();
+    void loadSyncStatus();
+    void flushQueuedHistorySync();
+  }, []);
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <Stack 
-        screenOptions={{ headerShown: false }}
+        screenOptions={{
+          headerShown: false,
+          animation: 'slide_from_right',
+          animationDuration: 160,
+          gestureEnabled: true,
+          contentStyle: { backgroundColor: Colors.light.background },
+        }}
         initialRouteName="index"
       >
         <Stack.Screen name="index" />

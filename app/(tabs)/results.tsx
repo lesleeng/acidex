@@ -1,26 +1,31 @@
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import React, { useEffect, useRef, useState } from "react";
 import {
-  Animated,
-  DimensionValue,
-  ScrollView,
-  StyleSheet,
-  TextInput,
-  TouchableOpacity,
-  View,
+    Animated,
+    DimensionValue,
+    Modal,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    TextInput,
+  Share,
+    TouchableOpacity,
+    View,
 } from "react-native";
 
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import Colors from "@/constants/colors";
 import { BookmarkStore } from "@/src/data/bookmarkStore";
+import { CollectionStore } from "@/src/data/collectionStore";
+import { shareAnalysisPdf } from "@/src/services/exportService";
 import {
-  getNarrativeWithFallback,
+    getNarrativeWithFallback,
 } from "@/src/services/aiAnalysisService";
-import {
-} from "@/src/services/analysisService";
+import { } from "@/src/services/analysisService";
 import { syncHistoryRecordToSupabase } from "@/src/services/historySync";
-import { getLatestCachedAnalysis, getLatestStoredAnalysis, saveAnalysisRecord } from "@/src/store/analysisStore";
+import { getLatestCachedAnalysis, getLatestStoredAnalysis, getStoredAnalysisHistory, saveAnalysisRecord } from "@/src/store/analysisStore";
+import { UserPreferencesStore } from "@/src/data/userPreferencesStore";
 import { AnalysisNarrative, AnalysisRecord } from "@/src/types/analysis";
 
 const CLASSIFICATION_COLORS = {
@@ -83,6 +88,11 @@ function getTipRows(item: AnalysisRecord, texts: string[]) {
 function getScalePct(item: AnalysisRecord): number {
   const clamped = Math.max(4.0, Math.min(6.0, item.ph));
   return ((6.0 - clamped) / 2.0) * 100;
+}
+
+function isDefaultCoffeeName(value?: string): boolean {
+  if (!value) return false;
+  return /^Sample\s+\d+$/i.test(value.trim());
 }
 
 function Toast({ visible, type }: { visible: boolean; type: ToastType }) {
@@ -201,8 +211,31 @@ function SkeletonLine({ width = "100%", height = 12, marginTop = 0 }: { width?: 
 }
 
 function ResultsSkeleton() {
+  const pulse = useRef(new Animated.Value(0.45)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 700,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0.45,
+          duration: 700,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+
+    loop.start();
+    return () => loop.stop();
+  }, [pulse]);
+
   return (
-    <View style={r.skeletonWrap}>
+    <Animated.View style={[r.skeletonWrap, { opacity: pulse }]}
+    >
       <View style={r.skeletonCard}>
         <View style={r.skeletonCardHeader}>
           <SkeletonLine width={110} height={16} />
@@ -306,7 +339,7 @@ function ResultsSkeleton() {
           <SkeletonLine width="76%" height={12} marginTop={8} />
         </View>
       </View>
-    </View>
+    </Animated.View>
   );
 }
 
@@ -326,9 +359,16 @@ export default function ResultsScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [isEditingNotes, setIsEditingNotes] = useState(false);
   const [notesText, setNotesText] = useState("");
+  const [coffeeNameText, setCoffeeNameText] = useState("");
   const [toastVisible, setToastVisible] = useState(false);
   const [toastType, setToastType] = useState<ToastType>("save");
   const [isBookmarked, setIsBookmarked] = useState(false);
+  const [renameModalVisible, setRenameModalVisible] = useState(false);
+  const [preferences, setPreferences] = useState(UserPreferencesStore.defaults);
+  const [collections, setCollections] = useState(CollectionStore.getAll());
+  const [previousRecord, setPreviousRecord] = useState<AnalysisRecord | null>(null);
+
+  const hasPromptedCoffeeName = useRef(false);
 
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -349,6 +389,10 @@ export default function ResultsScreen() {
 
       if (!mounted) return;
       setLatest(next);
+      const history = await getStoredAnalysisHistory();
+      const sorted = [...history].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      const prev = sorted.find((item) => item.id !== next?.id) ?? null;
+      setPreviousRecord(prev);
       setIsLoading(false);
     };
 
@@ -364,7 +408,28 @@ export default function ResultsScreen() {
     if (!latest) return;
 
     setNotesText(latest.note ?? "");
+    setCoffeeNameText(latest.coffeeType ?? "");
     setIsBookmarked(BookmarkStore.isBookmarked(latest.id));
+  }, [latest]);
+
+  useEffect(() => {
+    void UserPreferencesStore.load();
+    setPreferences(UserPreferencesStore.get());
+    const unsubscribe = UserPreferencesStore.subscribe(setPreferences);
+    void CollectionStore.load();
+    const unsubCollections = CollectionStore.subscribe(setCollections);
+    return () => {
+      unsubscribe();
+      unsubCollections();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!latest || hasPromptedCoffeeName.current) return;
+    if (!isDefaultCoffeeName(latest.coffeeType)) return;
+
+    hasPromptedCoffeeName.current = true;
+    setRenameModalVisible(true);
   }, [latest]);
 
   const showToast = (type: ToastType) => {
@@ -386,6 +451,27 @@ export default function ResultsScreen() {
     setLatest(nextRecord);
     setIsEditingNotes(false);
     showToast("save");
+  };
+
+  const handleSaveCoffeeName = async () => {
+    if (!latest) return;
+
+    const nextCoffeeName = coffeeNameText.trim() || latest.coffeeType;
+    const nextRecord: AnalysisRecord = {
+      ...latest,
+      coffeeType: nextCoffeeName,
+    };
+
+    await saveAnalysisRecord(nextRecord);
+    setLatest(nextRecord);
+    setRenameModalVisible(false);
+    setCoffeeNameText(nextCoffeeName);
+    showToast("save");
+  };
+
+  const handleCancelCoffeeName = () => {
+    setCoffeeNameText(latest?.coffeeType ?? "");
+    setRenameModalVisible(false);
   };
 
   const handleCancelEdit = () => {
@@ -410,6 +496,29 @@ export default function ResultsScreen() {
     showToast("bookmark");
   };
 
+  const handleShare = async () => {
+    if (!latest) return;
+
+    const summary = [
+      "ACIDEX SHARE CARD",
+      `${latest.coffeeType}`,
+      `pH ${latest.ph.toFixed(1)} • ${latest.classification} • ${latest.riskLevel}`,
+      latest.stomachState ? `Stomach state: ${latest.stomachState}` : null,
+      narrative?.safeTiming ? `Best timing: ${narrative.safeTiming}` : null,
+      narrative?.summary ?? "",
+      "",
+      "AI-assisted guidance. Not a medical diagnosis.",
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    await Share.share({ message: summary, title: `${latest.coffeeType} result` });
+  };
+  const handleSharePdf = async () => {
+    if (!latest) return;
+    await shareAnalysisPdf(latest);
+  };
+
   const clsColor = latest
     ? CLASSIFICATION_COLORS[latest.classification as keyof typeof CLASSIFICATION_COLORS] ?? CLASSIFICATION_COLORS.Moderate
     : CLASSIFICATION_COLORS.Moderate;
@@ -425,20 +534,36 @@ export default function ResultsScreen() {
   const impacts = narrative?.impactItems ?? [];
   const showEmptyOverlay = !isLoading && !latest;
   const showSkeleton = isLoading || showEmptyOverlay;
-  // ML model is now a fixed decision-stump; no LOOCV metrics shown here.
+  const contrastTextColor = preferences.highContrastEnabled ? "#1A1411" : undefined;
 
   const bookmarkButton = latest ? (
-    <TouchableOpacity
-      onPress={handleBookmark}
-      activeOpacity={0.7}
-      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-    >
-      <Ionicons
-        name={isBookmarked ? "bookmark" : "bookmark-outline"}
-        size={17}
-        color={isBookmarked ? "#4A3728" : "#C4A882"}
-      />
-    </TouchableOpacity>
+    <View style={r.headerActions}>
+      <TouchableOpacity
+        onPress={handleShare}
+        activeOpacity={0.7}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      >
+        <Ionicons name="share-social-outline" size={17} color="#C4A882" />
+      </TouchableOpacity>
+      <TouchableOpacity
+        onPress={handleSharePdf}
+        activeOpacity={0.7}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      >
+        <Ionicons name="document-outline" size={17} color="#C4A882" />
+      </TouchableOpacity>
+      <TouchableOpacity
+        onPress={handleBookmark}
+        activeOpacity={0.7}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      >
+        <Ionicons
+          name={isBookmarked ? "bookmark" : "bookmark-outline"}
+          size={17}
+          color={isBookmarked ? "#4A3728" : "#C4A882"}
+        />
+      </TouchableOpacity>
+    </View>
   ) : null;
 
   return (
@@ -450,8 +575,20 @@ export default function ResultsScreen() {
       >
         <ThemedView style={r.header}>
           <View style={r.headerMiddle}>
-            <ThemedText style={r.title}>results.</ThemedText>
-            <ThemedText style={r.subtitle}>your latest coffee analysis</ThemedText>
+            <ThemedText
+              style={r.title}
+              lightColor={Colors.light.text}
+              darkColor={Colors.light.text}
+            >
+              results.
+            </ThemedText>
+            <ThemedText
+              style={r.subtitle}
+              lightColor={Colors.light.text}
+              darkColor={Colors.light.text}
+            >
+              your latest coffee analysis
+            </ThemedText>
           </View>
         </ThemedView>
 
@@ -459,7 +596,7 @@ export default function ResultsScreen() {
           <View style={showEmptyOverlay ? r.skeletonDimmed : undefined}>
             <ResultsSkeleton />
           </View>
-        ) : (
+        ) : latest ? (
           <>
             <SectionCard title="Acidity Summary" accent="cream" trailing={bookmarkButton}>
               <InnerBlock>
@@ -468,7 +605,17 @@ export default function ResultsScreen() {
                     <MaterialCommunityIcons name="coffee" size={52} color="#8B5E3C" />
                   </View>
                   <View style={r.summaryRight}>
-                    <ThemedText style={r.coffeeName}>{latest.coffeeType}</ThemedText>
+                    <View style={r.coffeeNameRow}>
+                      <ThemedText style={r.coffeeName}>{latest.coffeeType}</ThemedText>
+                      <TouchableOpacity
+                        onPress={() => setRenameModalVisible(true)}
+                        activeOpacity={0.7}
+                        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                        style={r.editCoffeeButton}
+                      >
+                        <Ionicons name="pencil" size={13} color="#8B6A55" />
+                      </TouchableOpacity>
+                    </View>
                     <View style={r.phRow}>
                       <ThemedText style={r.phText}>pH {latest.ph.toFixed(1)}</ThemedText>
                       <View style={[r.badge, { backgroundColor: clsColor.badge }]}>
@@ -501,27 +648,9 @@ export default function ResultsScreen() {
                   </View>
                 </View>
 
-                <ThemedText style={r.summaryText}>{narrative?.summary}</ThemedText>
-                {!!latest.binaryLabel && (
-                  <ThemedText style={r.metaText}>
-                    ML label: {latest.binaryLabel}
-                    {typeof latest.mlConfidence === "number"
-                      ? ` (${Math.round(latest.mlConfidence * 100)}% confidence)`
-                      : ""}
-                  </ThemedText>
-                )}
-                {!!latest.mlModelName && (
-                  <ThemedText style={r.metaText}>
-                    ML model: {latest.mlModelName}
-                  </ThemedText>
-                )}
-                {typeof latest.stabilizationTimeSec === "number" && (
-                  <ThemedText style={r.metaText}>
-                    Stabilization time: {latest.stabilizationTimeSec}s
-                  </ThemedText>
-                )}
-                <ThemedText style={r.metaText}>
-                  Insight source: {narrative?.source === "llm" ? `LLM${narrative.model ? ` (${narrative.model})` : ""}` : "rules"}
+                <ThemedText style={[r.summaryText, preferences.largeTextEnabled && r.summaryTextLarge, contrastTextColor ? { color: contrastTextColor } : null]}>{narrative?.summary}</ThemedText>
+                <ThemedText style={[r.disclaimerText, preferences.largeTextEnabled && r.summaryTextLarge, contrastTextColor ? { color: contrastTextColor } : null]}>
+                  Health advisories use AI assistance and are for informational purposes only.
                 </ThemedText>
               </InnerBlock>
 
@@ -537,6 +666,11 @@ export default function ResultsScreen() {
                 {latest.stomachState && (
                   <Tag label={latest.stomachState} bg="#F4EEEA" color="#8B6A55" />
                 )}
+                <Tag
+                  label={`${preferences.tastePreset} mode`}
+                  bg={preferences.tastePreset === "bold" ? "#E8D5C4" : "#F4EEEA"}
+                  color="#8B6A55"
+                />
               </View>
             </SectionCard>
 
@@ -596,6 +730,44 @@ export default function ResultsScreen() {
                 )}
               </InnerBlock>
             </SectionCard>
+
+            <SectionCard title="Collections" accent="warm">
+              <InnerBlock>
+                <View style={r.collectionRow}>
+                  {["morning brews", "low acid"].map((name) => {
+                    const active = latest ? (collections[name] ?? []).includes(latest.id) : false;
+                    return (
+                      <TouchableOpacity
+                        key={name}
+                        style={[r.collectionChip, active && r.collectionChipActive]}
+                        onPress={() => latest && void CollectionStore.toggle(name, latest.id)}
+                        activeOpacity={0.8}
+                      >
+                        <ThemedText style={[r.collectionChipText, active && r.collectionChipTextActive]}>
+                          {name}
+                        </ThemedText>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </InnerBlock>
+            </SectionCard>
+
+            {latest && previousRecord && (
+              <SectionCard title="This Brew vs Last Brew" accent="slate">
+                <InnerBlock>
+                  <ThemedText style={r.compareLine}>
+                    {latest.coffeeType}: pH {latest.ph.toFixed(1)} ({latest.riskLevel})
+                  </ThemedText>
+                  <ThemedText style={r.compareLine}>
+                    {previousRecord.coffeeType}: pH {previousRecord.ph.toFixed(1)} ({previousRecord.riskLevel})
+                  </ThemedText>
+                  <ThemedText style={r.compareDelta}>
+                    Delta: {(latest.ph - previousRecord.ph).toFixed(1)} pH
+                  </ThemedText>
+                </InnerBlock>
+              </SectionCard>
+            )}
 
             <SectionCard title="Likely Effects & Advisory" accent="peach">
               <InnerBlock>
@@ -667,11 +839,52 @@ export default function ResultsScreen() {
               </InnerBlock>
             </SectionCard>
           </>
-        )}
+        ) : null}
 
       </ScrollView>
 
       {showEmptyOverlay ? <EmptyResultsOverlay /> : null}
+
+      <Modal
+        transparent
+        animationType="fade"
+        visible={renameModalVisible}
+        onRequestClose={handleCancelCoffeeName}
+      >
+        <Pressable style={r.renameOverlay} onPress={handleCancelCoffeeName}>
+          <Pressable style={r.renameModal} onPress={() => null}>
+            <View style={r.renameHeader}>
+              <ThemedText style={r.renameTitle}>Name this coffee</ThemedText>
+              <ThemedText style={r.renameSubtitle}>Make it easier to find later</ThemedText>
+            </View>
+            <TextInput
+              style={r.titleInput}
+              value={coffeeNameText}
+              onChangeText={setCoffeeNameText}
+              placeholder="e.g., Morning espresso"
+              placeholderTextColor="#A08880"
+              maxLength={40}
+              autoFocus
+            />
+            <View style={r.modalActions}>
+              <TouchableOpacity
+                style={[r.notesBtn, r.cancelBtn]}
+                onPress={handleCancelCoffeeName}
+                activeOpacity={0.7}
+              >
+                <ThemedText style={r.cancelBtnText}>cancel</ThemedText>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[r.notesBtn, r.saveBtn]}
+                onPress={handleSaveCoffeeName}
+                activeOpacity={0.7}
+              >
+                <ThemedText style={r.saveBtnText}>save</ThemedText>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <View style={r.toastWrapper} pointerEvents="none">
         <Toast visible={toastVisible} type={toastType} />
@@ -803,11 +1016,13 @@ const r = StyleSheet.create({
     lineHeight: 20,
     textAlign: "center",
     paddingTop: 1,
+    color: Colors.light.text,
   },
   subtitle: {
     fontSize: 12,
     opacity: 0.6,
     textAlign: "center",
+    color: Colors.light.text,
   },
   headerMiddle: {
     flex: 1.6,
@@ -827,6 +1042,11 @@ const r = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     marginBottom: 12,
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
   },
   cardTitle: { fontSize: 14, fontWeight: "700", color: "#2E211B" },
 
@@ -895,7 +1115,8 @@ const r = StyleSheet.create({
   scaleBottomLabels: { flexDirection: "row", justifyContent: "space-between" },
   scaleBottomSmall: { fontSize: 10, color: "#A08880" },
   summaryText: { fontSize: 13, lineHeight: 20, color: "#4B3A33", marginTop: 4 },
-  metaText: { fontSize: 12, lineHeight: 18, color: "#6C564B", marginTop: 6 },
+  summaryTextLarge: { fontSize: 15, lineHeight: 22 },
+  disclaimerText: { fontSize: 12, lineHeight: 18, color: "#6C564B", marginTop: 8 },
 
   tagRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 12 },
   tag: { borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4 },
@@ -955,7 +1176,8 @@ const r = StyleSheet.create({
     minHeight: 80,
     textAlignVertical: "top",
     backgroundColor: "#FFF",
-  },  titleInput: {
+  },
+  titleInput: {
     borderWidth: 1,
     borderColor: "#E0D5C4",
     borderRadius: 10,
@@ -966,7 +1188,47 @@ const r = StyleSheet.create({
     backgroundColor: "#FFF",
   },
   titleDisplayText: { fontSize: 14, fontWeight: "600", color: "#2E211B", lineHeight: 20 },
-  noTitleText: { fontSize: 13, color: "#A08880", fontStyle: "italic" },  notesActions: {
+  noTitleText: { fontSize: 13, color: "#A08880", fontStyle: "italic" },
+  coffeeNameRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  editCoffeeButton: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: "rgba(139,94,60,0.1)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  renameOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.35)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 20,
+  },
+  renameModal: {
+    width: "100%",
+    maxWidth: 360,
+    backgroundColor: "#FFFAF7",
+    borderRadius: 20,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: "#EDE3DC",
+  },
+  renameHeader: { marginBottom: 12 },
+  renameTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#2E211B",
+    marginBottom: 4,
+  },
+  renameSubtitle: { fontSize: 12, color: "#7A675C" },
+  modalActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 10,
+    marginTop: 14,
+  },
+  notesActions: {
     flexDirection: "row",
     justifyContent: "flex-end",
     gap: 10,
@@ -1028,4 +1290,36 @@ const r = StyleSheet.create({
     paddingVertical: 9,
   },
   toastText: { fontSize: 13, fontWeight: "600", textTransform: "lowercase" },
+  collectionRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  collectionChip: {
+    backgroundColor: "#F4EEEA",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 999,
+  },
+  collectionChipActive: {
+    backgroundColor: "#4A3728",
+  },
+  collectionChipText: {
+    fontSize: 12,
+    color: "#7A675C",
+    fontWeight: "600",
+  },
+  collectionChipTextActive: {
+    color: "#FFF",
+  },
+  compareLine: {
+    fontSize: 12,
+    lineHeight: 20,
+    color: "#4B3A33",
+  },
+  compareDelta: {
+    marginTop: 8,
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#2E211B",
+  },
 });

@@ -15,7 +15,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import Colors from '@/constants/colors'
-import { supabase } from '@/lib/supabase'
+import { recoverFromInvalidRefreshToken, supabase } from '@/lib/supabase'
 
 export default function ResetPasswordScreen() {
   const [password, setPassword] = useState('')
@@ -47,6 +47,7 @@ export default function ResetPasswordScreen() {
           )
         }
       } catch (error: any) {
+        await recoverFromInvalidRefreshToken(error)
         console.log('Error checking session:', error)
         Alert.alert('Error', 'Failed to verify session. Please try again.')
       } finally {

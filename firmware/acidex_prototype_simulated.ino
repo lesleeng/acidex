@@ -173,19 +173,28 @@ String classifyPH(float ph) {
 }
 
 float pickMeasurementPh(const String &sampleId) {
-  long numeric = sampleId.toInt();
-  if (numeric <= 0) {
-    numeric = static_cast<long>((hashString(sampleId) % 9u) + 1u);
+  (void)sampleId;
+
+  // Weighted random buckets so outputs vary realistically per analysis.
+  // ~30% acidic, ~45% moderate, ~25% non-acidic.
+  int bucket = random(0, 100);
+  float minPh = 4.55f;
+  float maxPh = 5.85f;
+
+  if (bucket < 30) {
+    minPh = 4.55f;
+    maxPh = 4.95f;
+  } else if (bucket < 75) {
+    minPh = 4.96f;
+    maxPh = 5.25f;
+  } else {
+    minPh = 5.26f;
+    maxPh = 5.85f;
   }
 
-  switch (numeric % 3) {
-    case 0:
-      return 5.58f;
-    case 1:
-      return 5.04f;
-    default:
-      return 4.78f;
-  }
+  long roll = random(0, 10001); // 0..10000
+  float unit = static_cast<float>(roll) / 10000.0f;
+  return minPh + unit * (maxPh - minPh);
 }
 
 AutoMeasureResult measureAutoStable() {
@@ -435,6 +444,13 @@ void handleGetCal() {
 void setup() {
   Serial.begin(115200);
   Serial.println("{\"status\":\"boot\",\"usbMode\":\"cdc\",\"transport\":\"serial\",\"mode\":\"simulated\"}");
+
+  // Seed RNG once so each app-triggered analysis can produce different pH values.
+#ifdef ESP32
+  randomSeed(static_cast<unsigned long>(esp_random() ^ micros()));
+#else
+  randomSeed(static_cast<unsigned long>(micros()));
+#endif
 
 #ifdef ESP32
   prefs.begin("acidex", false);

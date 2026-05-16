@@ -1,5 +1,5 @@
 // app/index.tsx
-import { supabase } from "@/lib/supabase";
+import { recoverFromInvalidRefreshToken, supabase } from "@/lib/supabase";
 import { router } from "expo-router";
 import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
@@ -15,6 +15,7 @@ export default function LandingPage() {
           router.replace("/(tabs)/home");
         }
       } catch (error) {
+        await recoverFromInvalidRefreshToken(error);
         console.log("Auth check error:", error);
       } finally {
         setIsLoading(false);
