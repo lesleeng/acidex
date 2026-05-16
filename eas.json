@@ -6,13 +6,28 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://hfsvvkuuprnyjkatbeio.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_9LXNgPGG0WBz85-4e_I2rA_FoFOSmT0",
+        "EXPO_PUBLIC_ANALYSIS_LLM_FUNCTION_NAME": "analysis-llm"
+      }
     },
     "preview": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://hfsvvkuuprnyjkatbeio.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_9LXNgPGG0WBz85-4e_I2rA_FoFOSmT0",
+        "EXPO_PUBLIC_ANALYSIS_LLM_FUNCTION_NAME": "analysis-llm"
+      }
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://hfsvvkuuprnyjkatbeio.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_9LXNgPGG0WBz85-4e_I2rA_FoFOSmT0",
+        "EXPO_PUBLIC_ANALYSIS_LLM_FUNCTION_NAME": "analysis-llm"
+      }
     }
   },
   "submit": {
