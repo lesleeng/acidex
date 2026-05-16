@@ -46,12 +46,13 @@ export async function clearPersistedAuthSession() {
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
-    storage: authStorage,
+    //storage: authStorage,
+    storage: AsyncStorage,
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: false,
     // Use implicit flow for password reset to work properly
     // PKCE flow can cause issues with password reset tokens
-    flowType: 'implicit',
+    flowType: 'pkce',
   },
 })
