@@ -1,8 +1,8 @@
 import { Ionicons } from '@expo/vector-icons'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { Image } from 'expo-image'
-import * as WebBrowser from 'expo-web-browser'
 import { router } from 'expo-router'
+import * as WebBrowser from 'expo-web-browser'
 import React, { useEffect, useState } from 'react'
 import {
     Alert,
