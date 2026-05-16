@@ -1,12 +1,13 @@
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import React, { useEffect, useRef, useState } from "react";
 import {
-    Animated,
-    ScrollView,
-    StyleSheet,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Animated,
+  DimensionValue,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 import { ThemedText } from "@/components/themed-text";
@@ -14,13 +15,12 @@ import { ThemedView } from "@/components/themed-view";
 import Colors from "@/constants/colors";
 import { BookmarkStore } from "@/src/data/bookmarkStore";
 import {
-    getNarrativeWithFallback,
+  getNarrativeWithFallback,
 } from "@/src/services/aiAnalysisService";
 import {
-    getLatestAnalysis,
 } from "@/src/services/analysisService";
 import { getLatestCachedAnalysis, getLatestStoredAnalysis, saveAnalysisRecord } from "@/src/store/analysisStore";
-import { AnalysisRecord } from "@/src/types/analysis";
+import { AnalysisNarrative, AnalysisRecord } from "@/src/types/analysis";
 
 const CLASSIFICATION_COLORS = {
   "Highly Acidic": { bg: "#FCDEDE", text: "#8C1A1A", badge: "#E74C3C" },
@@ -195,10 +195,134 @@ function Tag({ label, bg, color }: { label: string; bg: string; color: string })
   );
 }
 
+function SkeletonLine({ width = "100%", height = 12, marginTop = 0 }: { width?: DimensionValue; height?: number; marginTop?: number }) {
+  return <View style={[r.skeletonLine, { width, height, marginTop }]} />;
+}
+
+function ResultsSkeleton() {
+  return (
+    <View style={r.skeletonWrap}>
+      <View style={r.skeletonCard}>
+        <View style={r.skeletonCardHeader}>
+          <SkeletonLine width={110} height={16} />
+          <SkeletonLine width={18} height={18} />
+        </View>
+        <View style={r.skeletonInner}>
+          <View style={r.skeletonSummaryTop}>
+            <View style={r.skeletonCircle} />
+            <View style={r.skeletonSummaryRight}>
+              <SkeletonLine width={120} height={16} />
+              <SkeletonLine width={165} height={14} marginTop={8} />
+              <SkeletonLine width={92} height={20} marginTop={8} />
+            </View>
+          </View>
+          <View style={r.skeletonScale}>
+            <SkeletonLine width="100%" height={12} />
+            <View style={r.skeletonScaleLabels}>
+              <SkeletonLine width={58} height={10} />
+              <SkeletonLine width={58} height={10} />
+            </View>
+          </View>
+          <SkeletonLine width="90%" height={12} />
+          <SkeletonLine width="76%" height={12} marginTop={8} />
+          <SkeletonLine width="64%" height={12} marginTop={8} />
+        </View>
+        <View style={r.skeletonTagsRow}>
+          <SkeletonLine width={72} height={22} />
+          <SkeletonLine width={88} height={22} />
+        </View>
+      </View>
+
+      <View style={r.skeletonCard}>
+        <View style={r.skeletonCardHeader}>
+          <SkeletonLine width={70} height={16} />
+          <SkeletonLine width={18} height={18} />
+        </View>
+        <View style={r.skeletonInner}>
+          <SkeletonLine width="95%" height={12} />
+          <SkeletonLine width="70%" height={12} marginTop={10} />
+          <View style={r.skeletonActionRow}>
+            <SkeletonLine width={76} height={26} />
+          </View>
+        </View>
+      </View>
+
+      <View style={r.skeletonCard}>
+        <View style={r.skeletonCardHeader}>
+          <SkeletonLine width={150} height={16} />
+        </View>
+        <View style={r.skeletonInner}>
+          <SkeletonLine width="88%" height={12} />
+          <SkeletonLine width="78%" height={12} marginTop={8} />
+          <SkeletonLine width="68%" height={12} marginTop={8} />
+        </View>
+      </View>
+
+      <View style={r.skeletonCard}>
+        <View style={r.skeletonCardHeader}>
+          <SkeletonLine width={180} height={16} />
+        </View>
+        <View style={r.skeletonInner}>
+          {[0, 1, 2].map((index) => (
+            <View key={index} style={r.skeletonTipRow}>
+              <View style={r.skeletonTipIcon} />
+              <View style={r.skeletonTipTextWrap}>
+                <SkeletonLine width="92%" height={12} />
+                <SkeletonLine width="80%" height={12} marginTop={8} />
+              </View>
+            </View>
+          ))}
+        </View>
+      </View>
+
+      <View style={r.skeletonCard}>
+        <View style={r.skeletonCardHeader}>
+          <SkeletonLine width={130} height={16} />
+        </View>
+        <View style={r.skeletonInner}>
+          <SkeletonLine width="90%" height={12} />
+          <SkeletonLine width="62%" height={12} marginTop={8} />
+        </View>
+      </View>
+
+      <View style={r.skeletonCard}>
+        <View style={r.skeletonCardHeader}>
+          <SkeletonLine width={120} height={16} />
+        </View>
+        <View style={r.skeletonInner}>
+          <SkeletonLine width="94%" height={12} />
+          <SkeletonLine width="84%" height={12} marginTop={8} />
+          <SkeletonLine width="70%" height={12} marginTop={8} />
+        </View>
+      </View>
+
+      <View style={r.skeletonCard}>
+        <View style={r.skeletonCardHeader}>
+          <SkeletonLine width={110} height={16} />
+        </View>
+        <View style={r.skeletonInner}>
+          <SkeletonLine width="92%" height={12} />
+          <SkeletonLine width="76%" height={12} marginTop={8} />
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function EmptyResultsOverlay() {
+  return (
+    <View style={r.emptyOverlay} pointerEvents="none">
+      <View style={r.emptyPopup}>
+        <Ionicons name="information-circle-outline" size={26} color="#8B6A55" />
+        <ThemedText style={r.emptyPopupText}>No results yet.</ThemedText>
+      </View>
+    </View>
+  );
+}
+
 export default function ResultsScreen() {
   const [latest, setLatest] = useState<AnalysisRecord | null>(null);
-  const [isEditingTitle, setIsEditingTitle] = useState(false);
-  const [titleText, setTitleText] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
   const [isEditingNotes, setIsEditingNotes] = useState(false);
   const [notesText, setNotesText] = useState("");
   const [toastVisible, setToastVisible] = useState(false);
@@ -211,19 +335,20 @@ export default function ResultsScreen() {
     let mounted = true;
 
     const loadLatest = async () => {
+      setIsLoading(true);
       const cached = getLatestCachedAnalysis();
-      const fallback = cached ?? getLatestAnalysis();
-      const initial = fallback;
+      const initial = cached ?? null;
 
       if (mounted) {
         setLatest(initial);
       }
 
       const stored = await getLatestStoredAnalysis();
-      const next = stored ?? cached ?? fallback;
+      const next = stored ?? cached ?? null;
 
       if (!mounted) return;
       setLatest(next);
+      setIsLoading(false);
     };
 
     loadLatest();
@@ -237,7 +362,6 @@ export default function ResultsScreen() {
   useEffect(() => {
     if (!latest) return;
 
-    setTitleText(latest.title ?? "");
     setNotesText(latest.note ?? "");
     setIsBookmarked(BookmarkStore.isBookmarked(latest.id));
   }, [latest]);
@@ -247,25 +371,6 @@ export default function ResultsScreen() {
     setToastType(type);
     setToastVisible(true);
     toastTimer.current = setTimeout(() => setToastVisible(false), 2200);
-  };
-
-  const handleSaveTitle = async () => {
-    if (!latest) return;
-
-    const nextRecord: AnalysisRecord = {
-      ...latest,
-      title: titleText.trim() || undefined,
-    };
-
-    await saveAnalysisRecord(nextRecord);
-    setLatest(nextRecord);
-    setIsEditingTitle(false);
-    showToast("save");
-  };
-
-  const handleCancelTitleEdit = () => {
-    setTitleText(latest?.title ?? "");
-    setIsEditingTitle(false);
   };
 
   const handleSaveNotes = async () => {
@@ -302,26 +407,24 @@ export default function ResultsScreen() {
     showToast("bookmark");
   };
 
-  if (!latest) {
-    return (
-      <ThemedView style={r.emptyScreen}>
-        <ThemedText style={r.emptyText}>No results yet.</ThemedText>
-      </ThemedView>
-    );
-  }
-
-  const clsColor =
-    CLASSIFICATION_COLORS[latest.classification] ?? CLASSIFICATION_COLORS.Moderate;
-  const riskColor =
-    RISK_COLORS[latest.riskLevel ?? "Low Risk"] ?? RISK_COLORS["Low Risk"];
-  const scalePct = getScalePct(latest);
-  const narrative = getNarrativeWithFallback(latest);
-  const tips = getTipRows(latest, narrative.tips);
-  const effects = narrative.likelyEffectItems;
-  const impacts = narrative.impactItems;
+  const clsColor = latest
+    ? CLASSIFICATION_COLORS[latest.classification as keyof typeof CLASSIFICATION_COLORS] ?? CLASSIFICATION_COLORS.Moderate
+    : CLASSIFICATION_COLORS.Moderate;
+  const riskColor = latest
+    ? RISK_COLORS[latest.riskLevel as keyof typeof RISK_COLORS] ?? RISK_COLORS["Low Risk"]
+    : RISK_COLORS["Low Risk"];
+  const scalePct = latest ? getScalePct(latest) : 0;
+  const narrative = latest
+    ? (getNarrativeWithFallback(latest) as AnalysisNarrative)
+    : null;
+  const tips = latest ? getTipRows(latest, narrative?.tips ?? []) : [];
+  const effects = narrative?.likelyEffectItems ?? [];
+  const impacts = narrative?.impactItems ?? [];
+  const showEmptyOverlay = !isLoading && !latest;
+  const showSkeleton = isLoading || showEmptyOverlay;
   // ML model is now a fixed decision-stump; no LOOCV metrics shown here.
 
-  const bookmarkButton = (
+  const bookmarkButton = latest ? (
     <TouchableOpacity
       onPress={handleBookmark}
       activeOpacity={0.7}
@@ -333,7 +436,7 @@ export default function ResultsScreen() {
         color={isBookmarked ? "#4A3728" : "#C4A882"}
       />
     </TouchableOpacity>
-  );
+  ) : null;
 
   return (
     <ThemedView style={r.screen}>
@@ -349,261 +452,223 @@ export default function ResultsScreen() {
           </View>
         </ThemedView>
 
-        <SectionCard title="Acidity Summary" accent="cream" trailing={bookmarkButton}>
-          <InnerBlock>
-            <View style={r.summaryTop}>
-              <View style={r.coffeeIconWrap}>
-                <MaterialCommunityIcons name="coffee" size={52} color="#8B5E3C" />
-              </View>
-              <View style={r.summaryRight}>
-                <ThemedText style={r.coffeeName}>{latest.coffeeType}</ThemedText>
-                <View style={r.phRow}>
-                  <ThemedText style={r.phText}>pH {latest.ph.toFixed(1)}</ThemedText>
-                  <View style={[r.badge, { backgroundColor: clsColor.badge }]}>
-                    <ThemedText style={r.badgeText}>{latest.classification}</ThemedText>
+        {showSkeleton ? (
+          <View style={showEmptyOverlay ? r.skeletonDimmed : undefined}>
+            <ResultsSkeleton />
+          </View>
+        ) : (
+          <>
+            <SectionCard title="Acidity Summary" accent="cream" trailing={bookmarkButton}>
+              <InnerBlock>
+                <View style={r.summaryTop}>
+                  <View style={r.coffeeIconWrap}>
+                    <MaterialCommunityIcons name="coffee" size={52} color="#8B5E3C" />
+                  </View>
+                  <View style={r.summaryRight}>
+                    <ThemedText style={r.coffeeName}>{latest.coffeeType}</ThemedText>
+                    <View style={r.phRow}>
+                      <ThemedText style={r.phText}>pH {latest.ph.toFixed(1)}</ThemedText>
+                      <View style={[r.badge, { backgroundColor: clsColor.badge }]}>
+                        <ThemedText style={r.badgeText}>{latest.classification}</ThemedText>
+                      </View>
+                    </View>
+                    <View style={[r.riskTag, { backgroundColor: riskColor.bg }]}>
+                      <ThemedText style={[r.riskTagText, { color: riskColor.text }]}>
+                        {latest.riskLevel}
+                      </ThemedText>
+                    </View>
                   </View>
                 </View>
-                <View style={[r.riskTag, { backgroundColor: riskColor.bg }]}>
-                  <ThemedText style={[r.riskTagText, { color: riskColor.text }]}>
-                    {latest.riskLevel}
-                  </ThemedText>
+
+                <View style={r.scaleBlock}>
+                  <View style={r.scaleTopLabels}>
+                    <ThemedText style={r.scaleLabelSmall}>Low acid</ThemedText>
+                    <ThemedText style={r.scaleLabelSmall}>High acid</ThemedText>
+                  </View>
+                  <View style={r.scaleBar}>
+                    <View style={[r.scaleSegment, { backgroundColor: "#A8C69F" }]} />
+                    <View style={[r.scaleSegment, { backgroundColor: "#E7CFAB" }]} />
+                    <View style={[r.scaleSegment, { backgroundColor: "#E49B92" }]} />
+                    <View style={[r.scaleDot, { left: `${Math.min(scalePct, 88)}%` }]} />
+                  </View>
+                  <View style={r.scaleBottomLabels}>
+                    <ThemedText style={r.scaleBottomSmall}>pH 6.0+</ThemedText>
+                    <ThemedText style={r.scaleBottomSmall}>pH {latest.ph.toFixed(1)}</ThemedText>
+                    <ThemedText style={r.scaleBottomSmall}>pH 4.0</ThemedText>
+                  </View>
                 </View>
-              </View>
-            </View>
 
-            <View style={r.scaleBlock}>
-              <View style={r.scaleTopLabels}>
-                <ThemedText style={r.scaleLabelSmall}>Low acid</ThemedText>
-                <ThemedText style={r.scaleLabelSmall}>High acid</ThemedText>
-              </View>
-              <View style={r.scaleBar}>
-                <View style={[r.scaleSegment, { backgroundColor: "#A8C69F" }]} />
-                <View style={[r.scaleSegment, { backgroundColor: "#E7CFAB" }]} />
-                <View style={[r.scaleSegment, { backgroundColor: "#E49B92" }]} />
-                <View style={[r.scaleDot, { left: `${Math.min(scalePct, 88)}%` }]} />
-              </View>
-              <View style={r.scaleBottomLabels}>
-                <ThemedText style={r.scaleBottomSmall}>pH 6.0+</ThemedText>
-                <ThemedText style={r.scaleBottomSmall}>pH {latest.ph.toFixed(1)}</ThemedText>
-                <ThemedText style={r.scaleBottomSmall}>pH 4.0</ThemedText>
-              </View>
-            </View>
-
-            <ThemedText style={r.summaryText}>{narrative.summary}</ThemedText>
-            {!!latest.binaryLabel && (
-              <ThemedText style={r.metaText}>
-                ML label: {latest.binaryLabel}
-                {typeof latest.mlConfidence === "number"
-                  ? ` (${Math.round(latest.mlConfidence * 100)}% confidence)`
-                  : ""}
-              </ThemedText>
-            )}
-            {!!latest.mlModelName && (
-              <ThemedText style={r.metaText}>
-                ML model: {latest.mlModelName}
-              </ThemedText>
-            )}
-            {typeof latest.stabilizationTimeSec === "number" && (
-              <ThemedText style={r.metaText}>
-                Stabilization time: {latest.stabilizationTimeSec}s
-              </ThemedText>
-            )}
-            <ThemedText style={r.metaText}>
-              Insight source:{" "}
-              {narrative.source === "llm"
-                ? `LLM${narrative.model ? ` (${narrative.model})` : ""}`
-                : "rules"}
-            </ThemedText>
-          </InnerBlock>
-
-          <View style={r.tagRow}>
-            <Tag
-              label={new Date(latest.createdAt).toLocaleDateString("en-US", {
-                month: "short",
-                day: "numeric",
-              })}
-              bg="#F4EEEA"
-              color="#8B6A55"
-            />
-            {latest.stomachState && (
-              <Tag label={latest.stomachState} bg="#F4EEEA" color="#8B6A55" />
-            )}
-          </View>
-        </SectionCard>
-        <SectionCard title="Result Title" accent="cream">
-          <InnerBlock>
-            {isEditingTitle ? (
-              <View>
-                <TextInput
-                  style={r.titleInput}
-                  value={titleText}
-                  onChangeText={setTitleText}
-                  placeholder="Give this analysis a title..."
-                  placeholderTextColor="#A08880"
-                  maxLength={100}
-                  autoFocus
-                />
-                <View style={r.notesActions}>
-                  <TouchableOpacity
-                    style={[r.notesBtn, r.cancelBtn]}
-                    onPress={handleCancelTitleEdit}
-                    activeOpacity={0.7}
-                  >
-                    <ThemedText style={r.cancelBtnText}>cancel</ThemedText>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[r.notesBtn, r.saveBtn]}
-                    onPress={handleSaveTitle}
-                    activeOpacity={0.7}
-                  >
-                    <ThemedText style={r.saveBtnText}>save</ThemedText>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ) : (
-              <View>
-                {latest.title ? (
-                  <ThemedText style={r.titleDisplayText}>{latest.title}</ThemedText>
-                ) : (
-                  <ThemedText style={r.noTitleText}>
-                    No title yet. Name this analysis.
+                <ThemedText style={r.summaryText}>{narrative?.summary}</ThemedText>
+                {!!latest.binaryLabel && (
+                  <ThemedText style={r.metaText}>
+                    ML label: {latest.binaryLabel}
+                    {typeof latest.mlConfidence === "number"
+                      ? ` (${Math.round(latest.mlConfidence * 100)}% confidence)`
+                      : ""}
                   </ThemedText>
                 )}
-                <TouchableOpacity
-                  style={r.editNotesButton}
-                  onPress={() => setIsEditingTitle(true)}
-                  activeOpacity={0.7}
-                >
-                  <View style={r.editNotesIconCircle}>
-                    <Ionicons name="pencil" size={13} color="#8B6A55" />
-                  </View>
-                  <ThemedText style={r.editNotesText}>
-                    {latest.title ? "edit title" : "add title"}
-                  </ThemedText>
-                </TouchableOpacity>
-              </View>
-            )}
-          </InnerBlock>
-        </SectionCard>
-        <SectionCard title="Notes" accent="warm">
-          <InnerBlock>
-            {isEditingNotes ? (
-              <View>
-                <TextInput
-                  style={r.notesInput}
-                  value={notesText}
-                  onChangeText={setNotesText}
-                  placeholder="Add your notes about this coffee analysis..."
-                  placeholderTextColor="#A08880"
-                  multiline
-                  maxLength={500}
-                  autoFocus
-                />
-                <View style={r.notesActions}>
-                  <TouchableOpacity
-                    style={[r.notesBtn, r.cancelBtn]}
-                    onPress={handleCancelEdit}
-                    activeOpacity={0.7}
-                  >
-                    <ThemedText style={r.cancelBtnText}>cancel</ThemedText>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[r.notesBtn, r.saveBtn]}
-                    onPress={handleSaveNotes}
-                    activeOpacity={0.7}
-                  >
-                    <ThemedText style={r.saveBtnText}>save</ThemedText>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ) : (
-              <View>
-                {latest.note ? (
-                  <ThemedText style={r.notesText}>{latest.note}</ThemedText>
-                ) : (
-                  <ThemedText style={r.noNotesText}>
-                    No notes yet. Add some thoughts about this analysis.
+                {!!latest.mlModelName && (
+                  <ThemedText style={r.metaText}>
+                    ML model: {latest.mlModelName}
                   </ThemedText>
                 )}
-                <TouchableOpacity
-                  style={r.editNotesButton}
-                  onPress={() => setIsEditingNotes(true)}
-                  activeOpacity={0.7}
-                >
-                  <View style={r.editNotesIconCircle}>
-                    <Ionicons name="pencil" size={13} color="#8B6A55" />
-                  </View>
-                  <ThemedText style={r.editNotesText}>
-                    {latest.note ? "edit notes" : "add notes"}
+                {typeof latest.stabilizationTimeSec === "number" && (
+                  <ThemedText style={r.metaText}>
+                    Stabilization time: {latest.stabilizationTimeSec}s
                   </ThemedText>
-                </TouchableOpacity>
+                )}
+                <ThemedText style={r.metaText}>
+                  Insight source: {narrative?.source === "llm" ? `LLM${narrative.model ? ` (${narrative.model})` : ""}` : "rules"}
+                </ThemedText>
+              </InnerBlock>
+
+              <View style={r.tagRow}>
+                <Tag
+                  label={new Date(latest.createdAt).toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                  })}
+                  bg="#F4EEEA"
+                  color="#8B6A55"
+                />
+                {latest.stomachState && (
+                  <Tag label={latest.stomachState} bg="#F4EEEA" color="#8B6A55" />
+                )}
               </View>
-            )}
-          </InnerBlock>
-        </SectionCard>
+            </SectionCard>
 
-        <SectionCard title="Likely Effects & Advisory" accent="peach">
-          <InnerBlock>
-            <View style={r.warningRow}>
-              <Ionicons name="warning-outline" size={17} color="#C38C49" />
-              <ThemedText style={r.warningTitle}>
-                {narrative.likelyEffectTitle}
-              </ThemedText>
-            </View>
-            {effects.map((item, index) => (
-              <BulletItem key={`${item}-${index}`} text={item} />
-            ))}
-            <View style={r.divider} />
-            <ThemedText style={r.advisoryText}>{narrative.advisory}</ThemedText>
-          </InnerBlock>
-        </SectionCard>
+            <SectionCard title="Notes" accent="warm">
+              <InnerBlock>
+                {isEditingNotes ? (
+                  <View>
+                    <TextInput
+                      style={r.notesInput}
+                      value={notesText}
+                      onChangeText={setNotesText}
+                      placeholder="Add your notes about this coffee analysis..."
+                      placeholderTextColor="#A08880"
+                      multiline
+                      maxLength={500}
+                      autoFocus
+                    />
+                    <View style={r.notesActions}>
+                      <TouchableOpacity
+                        style={[r.notesBtn, r.cancelBtn]}
+                        onPress={handleCancelEdit}
+                        activeOpacity={0.7}
+                      >
+                        <ThemedText style={r.cancelBtnText}>cancel</ThemedText>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[r.notesBtn, r.saveBtn]}
+                        onPress={handleSaveNotes}
+                        activeOpacity={0.7}
+                      >
+                        <ThemedText style={r.saveBtnText}>save</ThemedText>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ) : (
+                  <View>
+                    {latest.note ? (
+                      <ThemedText style={r.notesText}>{latest.note}</ThemedText>
+                    ) : (
+                      <ThemedText style={r.noNotesText}>
+                        No notes yet. Add some thoughts about this analysis.
+                      </ThemedText>
+                    )}
+                    <TouchableOpacity
+                      style={r.editNotesButton}
+                      onPress={() => setIsEditingNotes(true)}
+                      activeOpacity={0.7}
+                    >
+                      <View style={r.editNotesIconCircle}>
+                        <Ionicons name="pencil" size={13} color="#8B6A55" />
+                      </View>
+                      <ThemedText style={r.editNotesText}>
+                        {latest.note ? "edit notes" : "add notes"}
+                      </ThemedText>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </InnerBlock>
+            </SectionCard>
 
-        <SectionCard title="Tips to Minimize Discomfort" accent="sage">
-          <InnerBlock>
-            {tips.map((tip, index) => (
-              <View
-                key={`${tip.text}-${index}`}
-                style={[r.tipRow, index < tips.length - 1 && r.tipRowBorder]}
-              >
-                <View style={r.tipIconCircle}>
-                  <MaterialCommunityIcons
-                    name={tip.icon as never}
-                    size={16}
-                    color="#6B8F76"
-                  />
+            <SectionCard title="Likely Effects & Advisory" accent="peach">
+              <InnerBlock>
+                <View style={r.warningRow}>
+                  <Ionicons name="warning-outline" size={17} color="#C38C49" />
+                  <ThemedText style={r.warningTitle}>
+                    {narrative?.likelyEffectTitle}
+                  </ThemedText>
                 </View>
-                <ThemedText style={r.tipText}>{tip.text}</ThemedText>
+                {effects.map((item: string, index: number) => (
+                  <BulletItem key={`${item}-${index}`} text={item} />
+                ))}
+                <View style={r.divider} />
+                <ThemedText style={r.advisoryText}>{narrative?.advisory}</ThemedText>
+              </InnerBlock>
+            </SectionCard>
+
+            <SectionCard title="Tips to Minimize Discomfort" accent="sage">
+              <InnerBlock>
+                {tips.map((tip, index: number) => (
+                  <View
+                    key={`${tip.text}-${index}`}
+                    style={[r.tipRow, index < tips.length - 1 && r.tipRowBorder]}
+                  >
+                    <View style={r.tipIconCircle}>
+                      <MaterialCommunityIcons
+                        name={tip.icon as never}
+                        size={16}
+                        color="#6B8F76"
+                      />
+                    </View>
+                    <ThemedText style={r.tipText}>{tip.text}</ThemedText>
+                  </View>
+                ))}
+              </InnerBlock>
+            </SectionCard>
+
+            <SectionCard title="Potential Impact" accent="slate">
+              <InnerBlock>
+                {impacts.map((item: string, index: number) => (
+                  <BulletItem key={`${item}-${index}`} text={item} />
+                ))}
+              </InnerBlock>
+            </SectionCard>
+
+            <SectionCard
+              title="Safe Coffee Timing"
+              accent="slate"
+              trailing={<Ionicons name="time-outline" size={17} color="#5B7FA6" />}
+            >
+              <View style={r.timingRow}>
+                <View style={r.timingIconCircle}>
+                  <Ionicons name="time-outline" size={16} color="#5B7FA6" />
+                </View>
+                <ThemedText style={r.timingText}>{narrative.safeTiming}</ThemedText>
               </View>
-            ))}
-          </InnerBlock>
-        </SectionCard>
+            </SectionCard>
 
-        <SectionCard
-          title="Safe Coffee Timing"
-          accent="slate"
-          trailing={<Ionicons name="time-outline" size={17} color="#5B7FA6" />}
-        >
-          <View style={r.timingRow}>
-            <View style={r.timingIconCircle}>
-              <Ionicons name="time-outline" size={16} color="#5B7FA6" />
-            </View>
-            <ThemedText style={r.timingText}>{narrative.safeTiming}</ThemedText>
-          </View>
-        </SectionCard>
+            <SectionCard title="What's Coffee Acidity?" accent="warm">
+              <ThemedText style={r.infoParagraph}>
+                Coffee acidity refers to the acidic content of the drink, measured as
+                pH. Lower pH means higher acidity.
+              </ThemedText>
+              <InnerBlock>
+                <ThemedText style={r.innerBlockTitle}>What impacts acidity?</ThemedText>
+                {impacts.map((item: string, index: number) => (
+                  <BulletItem key={`${item}-${index}`} text={item} />
+                ))}
+              </InnerBlock>
+            </SectionCard>
+          </>
+        )}
 
-        <SectionCard title="What's Coffee Acidity?" accent="warm">
-          <ThemedText style={r.infoParagraph}>
-            Coffee acidity refers to the acidic content of the drink, measured as
-            pH. Lower pH means higher acidity.
-          </ThemedText>
-          <InnerBlock>
-            <ThemedText style={r.innerBlockTitle}>What impacts acidity?</ThemedText>
-            {impacts.map((item, index) => (
-              <BulletItem key={`${item}-${index}`} text={item} />
-            ))}
-          </InnerBlock>
-        </SectionCard>
       </ScrollView>
+
+      {showEmptyOverlay ? <EmptyResultsOverlay /> : null}
 
       <View style={r.toastWrapper} pointerEvents="none">
         <Toast visible={toastVisible} type={toastType} />
@@ -615,15 +680,110 @@ export default function ResultsScreen() {
 const r = StyleSheet.create({
   screen: { flex: 1, backgroundColor: "#F6F1EC" },
   scroll: { flex: 1 },
-  content: { paddingBottom: 40 },
+  content: { flexGrow: 1, paddingBottom: 40 },
 
-  emptyScreen: {
-    flex: 1,
-    backgroundColor: "#F6F1EC",
+  skeletonWrap: {
+    paddingBottom: 40,
+  },
+  skeletonDimmed: {
+    opacity: 0.34,
+  },
+  skeletonCard: {
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#EDE3DC",
+    backgroundColor: Colors.light.background,
+    padding: 16,
+    marginHorizontal: 16,
+    marginTop: 14,
+  },
+  skeletonCardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
+  skeletonInner: {
+    backgroundColor: "rgba(139,94,60,0.05)",
+    borderRadius: 14,
+    padding: 14,
+  },
+  skeletonSummaryTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  skeletonCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: "rgba(139,94,60,0.08)",
+    marginRight: 14,
+  },
+  skeletonSummaryRight: { flex: 1 },
+  skeletonScale: { marginBottom: 14 },
+  skeletonScaleLabels: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 6,
+  },
+  skeletonTagsRow: {
+    flexDirection: "row",
+    gap: 6,
+    marginTop: 12,
+  },
+  skeletonActionRow: {
+    marginTop: 12,
+    alignItems: "flex-start",
+  },
+  skeletonTipRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 10,
+  },
+  skeletonTipIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: "rgba(104,143,118,0.12)",
+  },
+  skeletonTipTextWrap: { flex: 1 },
+  skeletonLine: {
+    borderRadius: 999,
+    backgroundColor: "rgba(139,94,60,0.14)",
+  },
+
+  emptyOverlay: {
+    ...StyleSheet.absoluteFillObject,
     justifyContent: "center",
     alignItems: "center",
+    backgroundColor: "rgba(46, 33, 27, 0.28)",
+    paddingHorizontal: 24,
   },
-  emptyText: { fontSize: 13, color: "#8A6F63" },
+  emptyPopup: {
+    alignItems: "center",
+    gap: 10,
+    minWidth: 190,
+    maxWidth: 280,
+    paddingHorizontal: 20,
+    paddingVertical: 18,
+    borderRadius: 20,
+    backgroundColor: Colors.light.background,
+    borderWidth: 1,
+    borderColor: "#E5D8CB",
+    shadowColor: "#000",
+    shadowOpacity: 0.12,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 6,
+  },
+  emptyPopupText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#2E211B",
+    textAlign: "center",
+  },
 
   header: {
     flexDirection: "row",
