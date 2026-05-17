@@ -6,9 +6,9 @@ import {
     Modal,
     Pressable,
     ScrollView,
+    Share,
     StyleSheet,
     TextInput,
-  Share,
     TouchableOpacity,
     View,
 } from "react-native";
@@ -18,14 +18,14 @@ import { ThemedView } from "@/components/themed-view";
 import Colors from "@/constants/colors";
 import { BookmarkStore } from "@/src/data/bookmarkStore";
 import { CollectionStore } from "@/src/data/collectionStore";
-import { shareAnalysisPdf } from "@/src/services/exportService";
+import { UserPreferencesStore } from "@/src/data/userPreferencesStore";
 import {
     getNarrativeWithFallback,
 } from "@/src/services/aiAnalysisService";
 import { } from "@/src/services/analysisService";
+import { shareAnalysisPdf } from "@/src/services/exportService";
 import { syncHistoryRecordToSupabase } from "@/src/services/historySync";
 import { getLatestCachedAnalysis, getLatestStoredAnalysis, getStoredAnalysisHistory, saveAnalysisRecord } from "@/src/store/analysisStore";
-import { UserPreferencesStore } from "@/src/data/userPreferencesStore";
 import { AnalysisNarrative, AnalysisRecord } from "@/src/types/analysis";
 
 const CLASSIFICATION_COLORS = {

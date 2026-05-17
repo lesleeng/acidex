@@ -1,7 +1,7 @@
 import { ThemedText } from "@/components/themed-text";
 import Colors from "@/constants/colors";
-import { getStoredAnalysisHistory } from "@/src/store/analysisStore";
 import { UserPreferencesStore } from "@/src/data/userPreferencesStore";
+import { getStoredAnalysisHistory } from "@/src/store/analysisStore";
 import { AnalysisRecord } from "@/src/types/analysis";
 import { Ionicons } from "@expo/vector-icons";
 import React, { useEffect, useMemo, useState } from "react";
