@@ -1,5 +1,6 @@
 import { ThemedText } from "@/components/themed-text";
 import Colors from "@/constants/colors";
+import { UserPreferencesStore } from "@/src/data/userPreferencesStore";
 import { getStoredAnalysisHistory } from "@/src/store/analysisStore";
 import { AnalysisRecord } from "@/src/types/analysis";
 import { Ionicons } from "@expo/vector-icons";
@@ -122,6 +123,50 @@ function getPatternInsights(entries: AnalysisRecord[]): string[] {
     `Most logged coffee type: ${mostCommon}.`,
     `High risk entries: ${highRisk} out of ${entries.length}.`,
   ];
+}
+
+function getComparisonInsight(entries: AnalysisRecord[]): string[] {
+  if (entries.length < 2) return ["Log one more analysis to compare your next brew."];
+
+  const latest = entries.at(-1)!;
+  const previous = entries.at(-2)!;
+  const delta = latest.ph - previous.ph;
+  const direction = delta > 0 ? "milder" : delta < 0 ? "more acidic" : "about the same";
+  const diffText = Math.abs(delta).toFixed(1);
+  const riskText =
+    latest.riskLevel === previous.riskLevel
+      ? "risk stayed steady"
+      : `risk shifted from ${previous.riskLevel.toLowerCase()} to ${latest.riskLevel.toLowerCase()}`;
+
+  return [
+    `This brew is ${direction} than your previous one by ${diffText} pH.`,
+    `Compared with your last entry, ${riskText}.`,
+  ];
+}
+
+function getBestTimeInsight(entries: AnalysisRecord[]): string {
+  if (!entries.length) return "No timing insight yet.";
+
+  const buckets = getHourBuckets(entries).map((bucket) => {
+    const matching = entries.filter((entry) => {
+      const hour = new Date(entry.createdAt).getHours();
+      return hour >= bucket.range[0] && hour < bucket.range[1];
+    });
+
+    const avgPh = matching.length
+      ? matching.reduce((sum, entry) => sum + entry.ph, 0) / matching.length
+      : 0;
+    const highRisk = matching.filter((entry) => entry.riskLevel === "High Risk").length;
+
+    return {
+      ...bucket,
+      avgPh,
+      score: avgPh - highRisk * 0.35 + matching.length * 0.05,
+    };
+  });
+
+  const best = buckets.sort((a, b) => b.score - a.score)[0];
+  return best ? `${best.label} looks like your lowest-discomfort window so far.` : "No timing insight yet.";
 }
 
 // ─── Line Chart ───────────────────────────────────────────────────────────────
@@ -476,6 +521,7 @@ function FilterDropdown({
 
 export default function DashboardScreen() {
   const [records, setRecords] = useState<AnalysisRecord[]>([]);
+  const [preferences, setPreferences] = useState(UserPreferencesStore.defaults);
   const [selectedFilter, setSelectedFilter] = useState<FilterOption>(
     FILTER_OPTIONS.find((f) => f.days === 30)!
   );
@@ -484,6 +530,10 @@ export default function DashboardScreen() {
 
   useEffect(() => {
     let mounted = true;
+
+    void UserPreferencesStore.load();
+    setPreferences(UserPreferencesStore.get());
+    const unsubscribe = UserPreferencesStore.subscribe(setPreferences);
 
     const loadRecords = async () => {
       const stored = await getStoredAnalysisHistory();
@@ -500,6 +550,7 @@ export default function DashboardScreen() {
 
     return () => {
       mounted = false;
+      unsubscribe();
     };
   }, []);
 
@@ -509,6 +560,8 @@ export default function DashboardScreen() {
   );
   const summaryInsights  = useMemo(() => getSummaryInsights(filteredEntries), [filteredEntries]);
   const patternInsights  = useMemo(() => getPatternInsights(filteredEntries), [filteredEntries]);
+  const comparisonInsights = useMemo(() => getComparisonInsight(filteredEntries), [filteredEntries]);
+  const bestTimeInsight = useMemo(() => getBestTimeInsight(filteredEntries), [filteredEntries]);
 
   const totalScans = filteredEntries.length;
   const avgPh      = totalScans
@@ -516,6 +569,7 @@ export default function DashboardScreen() {
     : "—";
   const highRisk   = filteredEntries.filter((e) => e.riskLevel === "High Risk").length;
   const latest     = filteredEntries.at(-1) ?? null;
+  const contrastColor = preferences.highContrastEnabled ? "#1A1411" : undefined;
 
   return (
     <ScrollView
@@ -526,8 +580,20 @@ export default function DashboardScreen() {
       {/* ── Header ── */}
       <View style={s.header}>
         <View>
-          <ThemedText style={s.title}>dashboard.</ThemedText>
-          <ThemedText style={s.subtitle}>your coffee stats</ThemedText>
+          <ThemedText
+            style={s.title}
+            lightColor={Colors.light.text}
+            darkColor={Colors.light.text}
+          >
+            dashboard.
+          </ThemedText>
+          <ThemedText
+            style={s.subtitle}
+            lightColor={Colors.light.text}
+            darkColor={Colors.light.text}
+          >
+            your coffee stats
+          </ThemedText>
         </View>
       </View>
 
@@ -639,6 +705,25 @@ export default function DashboardScreen() {
         ))}
       </Card>
 
+      {/* ── Compare + timing ── */}
+      <Card title="Compare with Last Brew" accent="slate">
+        {comparisonInsights.map((item, i) => (
+          <View key={i} style={[s.bulletRow, i > 0 && { marginTop: 8 }]}>
+            <View style={s.bullet} />
+            <ThemedText style={[s.bulletText, contrastColor ? { color: contrastColor } : null]}>{item}</ThemedText>
+          </View>
+        ))}
+      </Card>
+
+      <Card title="Best Time for Low Discomfort" accent="sage">
+        <View style={s.bestTimeCard}>
+          <Ionicons name="time-outline" size={18} color="#5B7FA6" />
+          <ThemedText style={[s.bestTimeText, contrastColor ? { color: contrastColor } : null]}>
+            {bestTimeInsight}
+          </ThemedText>
+        </View>
+      </Card>
+
       {/* ── View History button ── */}
       <TouchableOpacity style={s.historyButton} activeOpacity={0.85}>
         <View style={s.historyLeft}>
@@ -710,11 +795,13 @@ const s = StyleSheet.create({
     lineHeight: 20,
     textAlign: "center",
     paddingTop: 1,
+    color: Colors.light.text,
   },
   subtitle: {
     fontSize: 12,
     opacity: 0.6,
     textAlign: "center",
+    color: Colors.light.text,
   },
 
   // filter
@@ -812,6 +899,17 @@ const s = StyleSheet.create({
   patternRow:       { flexDirection: "row", alignItems: "flex-start", paddingVertical: 10, gap: 10 },
   patternRowBorder: { borderBottomWidth: 1, borderBottomColor: "#E8D5C4" },
   patternIcon:      { fontSize: 14, marginTop: 2 },
+  bestTimeCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  bestTimeText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 20,
+    color: "#3A2B24",
+  },
 
   // history button
   historyButton: {

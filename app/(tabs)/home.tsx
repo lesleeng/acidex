@@ -5,16 +5,21 @@ import {
     classifyRiskLevel,
 } from "@/src/services/analysisService";
 import { readSensorData } from "@/src/services/sensorService";
+import {
+    applyDeviceSideCalibrationFromVoltages,
+    measureCalibrationBuffer,
+} from "@/src/services/calibrationService";
+import { schedulePostCoffeeReminder } from "@/src/services/reminderService";
 import type {
     ArduinoReadProgress,
     ArduinoReadStage,
 } from "@/src/services/usbService";
 import {
-  describeUsbDevice,
-  getFirstUsbDevice,
-  hasUsbDevice,
-  listUsbDevices,
-  requestUsbPermissionIfNeeded,
+    describeUsbDevice,
+    getFirstUsbDevice,
+    hasUsbDevice,
+    listUsbDevices,
+    requestUsbPermissionIfNeeded,
 } from "@/src/services/usbService";
 import { saveAnalysisRecord } from "@/src/store/analysisStore";
 import type { AnalysisRecord } from "@/src/types/analysis";
@@ -25,13 +30,16 @@ import { useRouter } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
     ActivityIndicator,
+    Animated,
     Dimensions,
+    Easing,
     FlatList,
     Modal,
     NativeScrollEvent,
     NativeSyntheticEvent,
     Pressable,
     StyleSheet,
+    TextInput,
     TouchableOpacity,
     View,
 } from "react-native";
@@ -165,6 +173,12 @@ export default function HomeScreen() {
   const [avatarIndex,  setAvatarIndex]  = useState<number | null>(null);
   const [userName,     setUserName]     = useState("User");
   const [selectedFact, setSelectedFact] = useState<FactType | null>(null);
+  const [calibrationHelpVisible, setCalibrationHelpVisible] = useState(false);
+  const [cupsTodayInput, setCupsTodayInput] = useState("1");
+  const [calibrationBusy, setCalibrationBusy] = useState(false);
+  const [calibrationLowVoltage, setCalibrationLowVoltage] = useState<number | null>(null);
+  const [calibrationHighVoltage, setCalibrationHighVoltage] = useState<number | null>(null);
+  const [calibrationMessage, setCalibrationMessage] = useState<string | null>(null);
 
   const [streakCount,          setStreakCount]          = useState(0);
   const [streakPopupVisible,   setStreakPopupVisible]   = useState(false);
@@ -177,6 +191,10 @@ export default function HomeScreen() {
   const [analyzeStage, setAnalyzeStage] = useState<ArduinoReadStage | "persisting" | "llm" | null>(null);
   const [pendingRecord,        setPendingRecord]        = useState<AnalysisRecord | null>(null);
   const [serialDebugLines, setSerialDebugLines] = useState<string[]>([]);
+
+  const pulseAnim = useRef(new Animated.Value(0)).current;
+  const shimmerAnim = useRef(new Animated.Value(0)).current;
+  const progressAnim = useRef(new Animated.Value(0)).current;
 
   const coffee = useThemeColor({}, "coffee");
   const text   = useThemeColor({}, "text");
@@ -284,6 +302,7 @@ export default function HomeScreen() {
     lastAnalyzeStageRef.current = null;
     setPendingRecord(null);
     setSerialDebugLines([]);
+    setCupsTodayInput("1");
 
     if (!hasOtg) {
       setAnalyzeStatus("no-device");
@@ -348,6 +367,7 @@ export default function HomeScreen() {
     const nextRecord: AnalysisRecord = {
       ...pendingRecord,
       stomachState,
+      cupsToday: Number(cupsTodayInput) || 1,
       riskLevel: nextRiskLevel,
       narrative: buildRuleBasedNarrative({
         coffeeType: pendingRecord.coffeeType,
@@ -364,6 +384,10 @@ export default function HomeScreen() {
     const persistRecord = async () => {
       setAnalyzeStage("persisting");
       await saveAnalysisRecord(nextRecord);
+      await schedulePostCoffeeReminder({
+        coffeeType: nextRecord.coffeeType,
+        riskLevel: nextRecord.riskLevel,
+      });
       if (cancelled) return;
 
       // LLM enrichment is part of the loading experience so Results can render instantly.
@@ -386,7 +410,7 @@ export default function HomeScreen() {
     return () => {
       cancelled = true;
     };
-  }, [analyzeStatus, pendingRecord, probeReady, stomachState]);
+  }, [analyzeStatus, pendingRecord, probeReady, stomachState, cupsTodayInput]);
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -416,10 +440,90 @@ export default function HomeScreen() {
       setSerialDebugLines([]);
       setAnalyzeError(null);
       setAnalyzeStage(null);
+      setCupsTodayInput("1");
+    }
+  };
+
+  const handleRunGuidedCalibration = async () => {
+    setCalibrationBusy(true);
+    setCalibrationMessage("Measuring pH 4.0 buffer...");
+    try {
+      const low = await measureCalibrationBuffer("low");
+      setCalibrationLowVoltage(low.voltage);
+
+      setCalibrationMessage("Measuring pH 7.0 buffer...");
+      const high = await measureCalibrationBuffer("high");
+      setCalibrationHighVoltage(high.voltage);
+
+      setCalibrationMessage("Applying calibration...");
+      const updated = await applyDeviceSideCalibrationFromVoltages({
+        lowVoltage: low.voltage,
+        highVoltage: high.voltage,
+      });
+      if (updated.type !== "updated") {
+        throw new Error("Calibration update response was invalid.");
+      }
+
+      setCalibrationMessage(
+        `Done. slope=${updated.slope.toFixed(4)}, intercept=${updated.intercept.toFixed(4)}`
+      );
+    } catch (error) {
+      setCalibrationMessage(error instanceof Error ? error.message : "Calibration failed.");
+    } finally {
+      setCalibrationBusy(false);
     }
   };
 
   const defaultAvatarSource = avatarIndex !== null ? DEFAULT_AVATARS[avatarIndex] : fallbackDefaultAvatar;
+
+  useEffect(() => {
+    if (analyzeStatus !== "analyzing") return;
+
+    const pulseLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 900,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 0,
+          duration: 900,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+
+    const shimmerLoop = Animated.loop(
+      Animated.timing(shimmerAnim, {
+        toValue: 1,
+        duration: 1300,
+        easing: Easing.inOut(Easing.quad),
+        useNativeDriver: true,
+      })
+    );
+
+    pulseLoop.start();
+    shimmerLoop.start();
+
+    return () => {
+      pulseLoop.stop();
+      shimmerLoop.stop();
+      pulseAnim.setValue(0);
+      shimmerAnim.setValue(0);
+    };
+  }, [analyzeStatus, pulseAnim, shimmerAnim]);
+
+  useEffect(() => {
+    Animated.timing(progressAnim, {
+      toValue: analyzeProgress,
+      duration: 420,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [analyzeProgress, progressAnim]);
 
   // ── Fact card ─────────────────────────────────────────────────────────────
   const FactCard = ({ fact }: { fact: FactType }) => (
@@ -720,9 +824,28 @@ export default function HomeScreen() {
               {analyzeStatus === "analyzing" && (
                 <>
                   {/* spinner header */}
-                  <View style={[styles.analyzeIconCircle, { backgroundColor: coffee + "18" }]}>
+                  <Animated.View
+                    style={[
+                      styles.analyzeIconCircle,
+                      {
+                        backgroundColor: coffee + "18",
+                        transform: [
+                          {
+                            scale: pulseAnim.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: [0.96, 1.04],
+                            }),
+                          },
+                        ],
+                        opacity: pulseAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0.78, 1],
+                        }),
+                      },
+                    ]}
+                  >
                     <ActivityIndicator size="small" color={coffee} />
-                  </View>
+                  </Animated.View>
                   <ThemedText style={[styles.analyzeModalTitle, { color: coffee }]}>
                     reading pH...
                   </ThemedText>
@@ -732,12 +855,31 @@ export default function HomeScreen() {
 
                   <View style={styles.analyzeProgressWrap}>
                     <View style={styles.analyzeProgressTrack}>
-                      <View
+                      <Animated.View
                         style={[
                           styles.analyzeProgressFill,
                           {
                             backgroundColor: coffee,
-                            width: `${Math.max(8, Math.round(analyzeProgress * 100))}%`,
+                            width: progressAnim.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: ["8%", "100%"],
+                            }),
+                          },
+                        ]}
+                      />
+                      <Animated.View
+                        pointerEvents="none"
+                        style={[
+                          styles.analyzeProgressShimmer,
+                          {
+                            transform: [
+                              {
+                                translateX: shimmerAnim.interpolate({
+                                  inputRange: [0, 1],
+                                  outputRange: [-80, width * 0.62],
+                                }),
+                              },
+                            ],
                           },
                         ]}
                       />
@@ -746,24 +888,6 @@ export default function HomeScreen() {
                       {analyzeHint}
                     </ThemedText>
                   </View>
-
-                  {serialDebugLines.length > 0 && (
-                    <View style={styles.serialDebugCard}>
-                      <View style={styles.serialDebugHeader}>
-                        <Ionicons name="terminal-outline" size={13} color="#8B5E3C" />
-                        <ThemedText style={styles.serialDebugTitle}>esp32 output</ThemedText>
-                      </View>
-                      <FlatList
-                        data={serialDebugLines}
-                        keyExtractor={(item, index) => `${index}-${item.slice(0, 12)}`}
-                        style={styles.serialDebugList}
-                        showsVerticalScrollIndicator={false}
-                        renderItem={({ item }) => (
-                          <ThemedText style={styles.serialDebugLine}>{item}</ThemedText>
-                        )}
-                      />
-                    </View>
-                  )}
 
                   {/* stomach log card */}
                   <View style={styles.stomachCard}>
@@ -797,6 +921,16 @@ export default function HomeScreen() {
                           </TouchableOpacity>
                         );
                       })}
+                    </View>
+                    <View style={styles.cupsRow}>
+                      <ThemedText style={styles.cupsLabel}>cups today</ThemedText>
+                      <TextInput
+                        value={cupsTodayInput}
+                        onChangeText={setCupsTodayInput}
+                        keyboardType="number-pad"
+                        style={styles.cupsInput}
+                        maxLength={2}
+                      />
                     </View>
 
                     {stomachState ? (
@@ -851,7 +985,79 @@ export default function HomeScreen() {
                 </>
               )}
 
+              <TouchableOpacity
+                activeOpacity={0.7}
+                style={styles.dismissLink}
+                onPress={() => setCalibrationHelpVisible(true)}
+              >
+                <ThemedText style={[styles.dismissLinkText, { color: coffee }]}>
+                  open calibration helper
+                </ThemedText>
+              </TouchableOpacity>
+
             </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        transparent
+        animationType="fade"
+        visible={calibrationHelpVisible}
+        onRequestClose={() => setCalibrationHelpVisible(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setCalibrationHelpVisible(false)}>
+          <Pressable style={styles.calibrationModal} onPress={() => null}>
+            <ThemedText style={styles.calibrationTitle}>calibration helper</ThemedText>
+            <ThemedText style={styles.calibrationSubtitle}>
+              Follow these steps before your next analysis.
+            </ThemedText>
+
+            {[
+              { icon: "water-outline", text: "Rinse probe and place it in pH 4.0 buffer." },
+              { icon: "pause-circle-outline", text: "Wait until reading stabilizes for 10-15 seconds." },
+              { icon: "flask-outline", text: "Rinse probe, then place it in pH 7.0 buffer." },
+              { icon: "checkmark-done-outline", text: "Run calibration and verify slope/intercept update." },
+            ].map((step, index) => (
+              <View key={step.text} style={styles.calibrationStepRow}>
+                <View style={styles.calibrationStepIndex}>
+                  <ThemedText style={styles.calibrationStepIndexText}>{index + 1}</ThemedText>
+                </View>
+                <Ionicons name={step.icon as keyof typeof Ionicons.glyphMap} size={16} color="#8B5E3C" />
+                <ThemedText style={styles.calibrationStepText}>{step.text}</ThemedText>
+              </View>
+            ))}
+
+            <TouchableOpacity
+              activeOpacity={0.85}
+              style={[styles.actionButton, { backgroundColor: coffee, marginTop: 16 }]}
+              onPress={handleRunGuidedCalibration}
+              disabled={calibrationBusy}
+            >
+              <ThemedText style={styles.actionButtonText}>
+                {calibrationBusy ? "running..." : "run guided calibration"}
+              </ThemedText>
+            </TouchableOpacity>
+            {calibrationLowVoltage !== null && (
+              <ThemedText style={styles.calibrationMeta}>
+                pH 4.0 voltage: {calibrationLowVoltage.toFixed(4)}
+              </ThemedText>
+            )}
+            {calibrationHighVoltage !== null && (
+              <ThemedText style={styles.calibrationMeta}>
+                pH 7.0 voltage: {calibrationHighVoltage.toFixed(4)}
+              </ThemedText>
+            )}
+            {calibrationMessage && (
+              <ThemedText style={styles.calibrationMeta}>{calibrationMessage}</ThemedText>
+            )}
+            <TouchableOpacity
+              activeOpacity={0.7}
+              style={styles.dismissLink}
+              onPress={() => setCalibrationHelpVisible(false)}
+            >
+              <ThemedText style={[styles.dismissLinkText, { color: coffee }]}>close</ThemedText>
+            </TouchableOpacity>
           </Pressable>
         </Pressable>
       </Modal>
@@ -1032,6 +1238,14 @@ const styles = StyleSheet.create({
     height: "100%",
     borderRadius: 999,
   },
+  analyzeProgressShimmer: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    width: 70,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.45)",
+  },
 
   actionButton: {
     width: "100%", paddingVertical: 12, borderRadius: 999,
@@ -1072,6 +1286,84 @@ const styles = StyleSheet.create({
   },
   stomachHint: {
     fontSize: 11, color: "#A08880", marginTop: 10, textAlign: "center",
+  },
+  cupsRow: {
+    marginTop: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#FFFAF7",
+    borderWidth: 1,
+    borderColor: "#EDE3DC",
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  cupsLabel: {
+    fontSize: 12,
+    color: "#3C2C24",
+    fontWeight: "600",
+    textTransform: "lowercase",
+  },
+  cupsInput: {
+    minWidth: 40,
+    textAlign: "center",
+    backgroundColor: "#F4EEEA",
+    borderRadius: 8,
+    paddingVertical: 6,
+    color: "#2E211B",
+    fontWeight: "700",
+  },
+  calibrationModal: {
+    width: width * 0.86,
+    backgroundColor: "#FFFAF7",
+    borderRadius: 22,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: "#EDE3DC",
+  },
+  calibrationTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#2E211B",
+    textTransform: "lowercase",
+  },
+  calibrationSubtitle: {
+    marginTop: 4,
+    marginBottom: 12,
+    fontSize: 12,
+    color: "#7A675C",
+  },
+  calibrationStepRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 8,
+  },
+  calibrationStepIndex: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "#F4EEEA",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  calibrationStepIndexText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#8B5E3C",
+  },
+  calibrationStepText: {
+    flex: 1,
+    fontSize: 12,
+    color: "#4B3A33",
+    lineHeight: 18,
+  },
+  calibrationMeta: {
+    marginTop: 8,
+    fontSize: 11,
+    color: "#6C564B",
+    lineHeight: 16,
   },
   serialDebugCard: {
     width: "100%",

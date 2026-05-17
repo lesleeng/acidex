@@ -2,17 +2,21 @@ import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import Colors from "@/constants/colors";
 import { useThemeColor } from "@/hooks/use-theme-color";
-import { getStoredAnalysisHistory } from "@/src/store/analysisStore";
+import { BookmarkStore } from "@/src/data/bookmarkStore";
+import { CollectionStore } from "@/src/data/collectionStore";
+import { getStoredAnalysisHistory, saveAnalysisRecord } from "@/src/store/analysisStore";
 import { AnalysisRecord } from "@/src/types/analysis";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import { BookmarkStore } from "@/src/data/bookmarkStore";
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  ScrollView,
-  StyleSheet,
-  TextInput,
-  TouchableOpacity,
-  View,
+    Modal,
+    Pressable,
+    ScrollView,
+    Share,
+    StyleSheet,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -69,6 +73,24 @@ export default function HistoryScreen() {
   const [search,         setSearch]         = useState("");
   const [selectedFilter, setSelectedFilter] = useState("All");
   const [expandedId,     setExpandedId]     = useState<string | null>(null);
+  const [renameModalVisible, setRenameModalVisible] = useState(false);
+  const [renameText, setRenameText] = useState("");
+  const [renameTarget, setRenameTarget] = useState<AnalysisRecord | null>(null);
+  const [collections, setCollections] = useState(CollectionStore.getAll());
+
+  const handleExportSummary = async () => {
+    if (!filteredRecords.length) return;
+
+    const items = filteredRecords.slice(0, 5).map((item) => {
+      const label = item.riskLevel ? ` • ${item.riskLevel}` : "";
+      return `${item.coffeeType} - pH ${item.ph.toFixed(1)}${label}`;
+    });
+
+    await Share.share({
+      title: "Acidex history summary",
+      message: [`Acidex history summary`, `Showing ${filteredRecords.length} record${filteredRecords.length !== 1 ? "s" : ""}.`, ...items].join("\n"),
+    });
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -85,22 +107,32 @@ export default function HistoryScreen() {
     };
 
     loadRecords();
+    void CollectionStore.load();
+    const unsubCollections = CollectionStore.subscribe(setCollections);
 
     return () => {
       mounted = false;
+      unsubCollections();
     };
   }, []);
 
   const filters = useMemo(() => {
     const uniqueCoffeeTypes = Array.from(new Set(records.map((item) => item.coffeeType))).filter(Boolean);
-    return ["All", ...uniqueCoffeeTypes];
-  }, [records]);
+    const collectionNames = Object.keys(collections).map((name) => `Collection: ${name}`);
+    return ["All", "Favorites", ...collectionNames, ...uniqueCoffeeTypes];
+  }, [records, collections]);
 
   const sortedRecords = records;
 
   const filteredRecords = useMemo(() =>
     sortedRecords.filter((item) => {
-      const matchFilter = selectedFilter === "All" || item.coffeeType === selectedFilter;
+      const isFavorite = BookmarkStore.isBookmarked(item.id);
+      const matchFilter =
+        selectedFilter === "All" ||
+        (selectedFilter === "Favorites" && isFavorite) ||
+        (selectedFilter.startsWith("Collection: ") &&
+          (collections[selectedFilter.replace("Collection: ", "")] ?? []).includes(item.id)) ||
+        item.coffeeType === selectedFilter;
       const q = search.trim().toLowerCase();
       const matchSearch = !q ||
         item.coffeeType.toLowerCase().includes(q) ||
@@ -108,7 +140,36 @@ export default function HistoryScreen() {
         (item.note ?? "").toLowerCase().includes(q) ||
         formatCardDate(item.createdAt).toLowerCase().includes(q);
       return matchFilter && matchSearch;
-    }), [sortedRecords, selectedFilter, search]);
+    }), [sortedRecords, selectedFilter, search, collections]);
+
+  const openRenameModal = (item: AnalysisRecord) => {
+    setRenameTarget(item);
+    setRenameText(item.coffeeType ?? "");
+    setRenameModalVisible(true);
+  };
+
+  const closeRenameModal = () => {
+    setRenameModalVisible(false);
+    setRenameTarget(null);
+    setRenameText("");
+  };
+
+  const saveRename = async () => {
+    if (!renameTarget) return;
+
+    const nextName = renameText.trim() || renameTarget.coffeeType;
+    const nextRecord: AnalysisRecord = {
+      ...renameTarget,
+      coffeeType: nextName,
+    };
+
+    await saveAnalysisRecord(nextRecord);
+    setRecords((current) => current.map((item) => (item.id === nextRecord.id ? nextRecord : item)));
+    if (expandedId === nextRecord.id) {
+      setExpandedId(nextRecord.id);
+    }
+    closeRenameModal();
+  };
 
   return (
     <ThemedView style={s.screen}>
@@ -166,6 +227,11 @@ export default function HistoryScreen() {
               );
             })}
           </ScrollView>
+
+          <TouchableOpacity style={s.exportButton} onPress={handleExportSummary} activeOpacity={0.8}>
+            <Ionicons name="share-social-outline" size={15} color="#4A3728" />
+            <ThemedText style={s.exportButtonText}>share history summary</ThemedText>
+          </TouchableOpacity>
         </View>
 
         {/* ── Count row ── */}
@@ -185,11 +251,52 @@ export default function HistoryScreen() {
         ) : (
           filteredRecords.map((item) =>
             expandedId === item.id
-              ? <ExpandedCard key={item.id} item={item} onCollapse={() => setExpandedId(null)} />
+              ? <ExpandedCard key={item.id} item={item} onCollapse={() => setExpandedId(null)} onRename={() => openRenameModal(item)} />
               : <CollapsedCard key={item.id} item={item} onExpand={() => setExpandedId(item.id)} />
           )
         )}
       </ScrollView>
+
+      <Modal
+        transparent
+        animationType="fade"
+        visible={renameModalVisible}
+        onRequestClose={closeRenameModal}
+      >
+        <Pressable style={s.renameOverlay} onPress={closeRenameModal}>
+          <Pressable style={s.renameModal} onPress={() => null}>
+            <View style={s.renameHeader}>
+              <ThemedText style={s.renameTitle}>Rename coffee</ThemedText>
+              <ThemedText style={s.renameSubtitle}>This updates the history record</ThemedText>
+            </View>
+            <TextInput
+              style={s.renameInput}
+              value={renameText}
+              onChangeText={setRenameText}
+              placeholder="e.g., Afternoon cold brew"
+              placeholderTextColor="#A08880"
+              maxLength={40}
+              autoFocus
+            />
+            <View style={s.renameActions}>
+              <TouchableOpacity
+                style={[s.renameBtn, s.renameCancel]}
+                onPress={closeRenameModal}
+                activeOpacity={0.7}
+              >
+                <ThemedText style={s.renameCancelText}>cancel</ThemedText>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.renameBtn, s.renameSave]}
+                onPress={saveRename}
+                activeOpacity={0.7}
+              >
+                <ThemedText style={s.renameSaveText}>save</ThemedText>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </ThemedView>
   );
 }
@@ -261,7 +368,15 @@ function CollapsedCard({ item, onExpand }: { item: AnalysisRecord; onExpand: () 
 
 // ─── Expanded Card ────────────────────────────────────────────────────────────
 
-function ExpandedCard({ item, onCollapse }: { item: AnalysisRecord; onCollapse: () => void }) {
+function ExpandedCard({
+  item,
+  onCollapse,
+  onRename,
+}: {
+  item: AnalysisRecord;
+  onCollapse: () => void;
+  onRename: () => void;
+}) {
   const cls  = CLASSIFICATION_COLORS[item.classification] ?? CLASSIFICATION_COLORS["Moderate"];
   const risk = RISK_COLORS[item.riskLevel ?? "Low Risk"]  ?? RISK_COLORS["Low Risk"];
 
@@ -284,6 +399,9 @@ function ExpandedCard({ item, onCollapse }: { item: AnalysisRecord; onCollapse: 
       <View style={s.cardTopRow}>
         <ThemedText style={s.expandedDate}>{formatDetailDate(item.createdAt)}</ThemedText>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <TouchableOpacity onPress={onRename} activeOpacity={0.7}>
+            <Ionicons name="pencil" size={15} color="#C4A882" />
+          </TouchableOpacity>
           <TouchableOpacity onPress={handleBookmarkToggle} activeOpacity={0.7}>
             <Ionicons name={isBookmarked ? 'bookmark' : 'bookmark-outline'} size={16} color={isBookmarked ? '#4A3728' : '#C4A882'} />
           </TouchableOpacity>
@@ -392,6 +510,21 @@ const s = StyleSheet.create({
   filterChipActive:    { backgroundColor: "#4A3728" },
   filterChipText:      { fontSize: 12, color: "#7A675C", fontWeight: "500" },
   filterChipTextActive:{ color: "#FFF", fontWeight: "600" },
+  exportButton: {
+    marginTop: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: "#F4EEEA",
+    borderRadius: 999,
+    paddingVertical: 11,
+  },
+  exportButtonText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#4A3728",
+  },
 
   // count
   countRow:  { paddingHorizontal: 4, paddingTop: 12, paddingBottom: 4 },
@@ -480,4 +613,59 @@ const s = StyleSheet.create({
     borderRadius: 20, padding: 28, alignItems: "center", marginTop: 8,
   },
   emptyText: { fontSize: 13, color: "#A08880" },
+  renameOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.35)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 20,
+  },
+  renameModal: {
+    width: "100%",
+    maxWidth: 360,
+    backgroundColor: "#FFFAF7",
+    borderRadius: 20,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: "#EDE3DC",
+  },
+  renameHeader: { marginBottom: 12 },
+  renameTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#2E211B",
+    marginBottom: 4,
+  },
+  renameSubtitle: { fontSize: 12, color: "#7A675C" },
+  renameInput: {
+    borderWidth: 1,
+    borderColor: "#E0D5C4",
+    borderRadius: 10,
+    padding: 12,
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#2E211B",
+    backgroundColor: "#FFF",
+  },
+  renameActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 10,
+    marginTop: 14,
+  },
+  renameBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 999 },
+  renameCancel: { backgroundColor: "#F4EEEA" },
+  renameCancelText: {
+    fontSize: 13,
+    color: "#8B6A55",
+    fontWeight: "500",
+    textTransform: "lowercase",
+  },
+  renameSave: { backgroundColor: "#4A3728" },
+  renameSaveText: {
+    fontSize: 13,
+    color: "#FFF",
+    fontWeight: "600",
+    textTransform: "lowercase",
+  },
 });

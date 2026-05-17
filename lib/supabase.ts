@@ -1,7 +1,6 @@
 import 'react-native-url-polyfill/auto.js'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { createClient } from '@supabase/supabase-js'
-import process from "node:process";
 
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL!
 const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!
@@ -13,7 +12,7 @@ function isSupabaseAuthKey(key: string) {
 }
 
 async function removePersistedAuthSession() {
-  const keys = AsyncStorage.getAllKeys() || []
+  const keys = await AsyncStorage.getAllKeys()
   const authKeys = keys.filter(isSupabaseAuthKey)
   if (authKeys.length > 0) {
     await AsyncStorage.multiRemove(authKeys)
@@ -44,10 +43,34 @@ export async function clearPersistedAuthSession() {
   await removePersistedAuthSession()
 }
 
+export function isInvalidRefreshTokenError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  const message =
+    'message' in error && typeof (error as { message?: unknown }).message === 'string'
+      ? (error as { message: string }).message
+      : ''
+
+  return (
+    message.includes('Invalid Refresh Token') ||
+    message.includes('Refresh Token Not Found') ||
+    message.includes('refresh_token_not_found')
+  )
+}
+
+export async function recoverFromInvalidRefreshToken(error: unknown): Promise<boolean> {
+  if (!isInvalidRefreshTokenError(error)) return false
+  await clearPersistedAuthSession()
+  try {
+    await supabase.auth.signOut({ scope: 'local' })
+  } catch {
+    // no-op, local session was already invalid
+  }
+  return true
+}
+
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
-    //storage: authStorage,
-    storage: AsyncStorage,
+    storage: authStorage,
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: false,
