@@ -25,6 +25,17 @@ import { supabase } from '@/lib/supabase'
 
 const OAUTH_REDIRECT_URL = 'acidex://callback'
 
+function isExistingAccountError(message: string): boolean {
+  const msg = message.toLowerCase()
+  return (
+    msg.includes('already registered') ||
+    msg.includes('already exists') ||
+    msg.includes('user already registered') ||
+    msg.includes('email already') ||
+    msg.includes('already been registered')
+  )
+}
+
 export default function SignUpScreen() {
   const [email, setEmail] = useState('')
   const [username, setUsername] = useState('')
@@ -91,6 +102,24 @@ export default function SignUpScreen() {
 
       if (error) throw error
 
+      const looksLikeExistingUser =
+        !!data?.user &&
+        Array.isArray(data.user.identities) &&
+        data.user.identities.length === 0
+
+      if (looksLikeExistingUser) {
+        Alert.alert(
+          'Account already exists',
+          'This email is already registered. Please log in or reset your password.',
+          [
+            { text: 'cancel', style: 'cancel' },
+            { text: 'forgot password', onPress: () => router.push('/(auth)/forgot-password') },
+            { text: 'go to login', onPress: () => router.push('/(auth)/login') },
+          ]
+        )
+        return
+      }
+
       Alert.alert('Success', 'Account created successfully! Please check your email.')
       router.replace('/(auth)/login')
     } catch (err: any) {
@@ -105,8 +134,16 @@ export default function SignUpScreen() {
         return
       }
 
-      if (msg.toLowerCase().includes('already registered')) {
-        Alert.alert('Email Exists', 'This email is already registered. Please log in instead.')
+      if (isExistingAccountError(msg)) {
+        Alert.alert(
+          'Account already exists',
+          'This email is already registered. Please log in or reset your password.',
+          [
+            { text: 'cancel', style: 'cancel' },
+            { text: 'forgot password', onPress: () => router.push('/(auth)/forgot-password') },
+            { text: 'go to login', onPress: () => router.push('/(auth)/login') },
+          ]
+        )
         return
       }
 

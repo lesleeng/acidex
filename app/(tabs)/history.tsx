@@ -7,19 +7,19 @@ import { CollectionStore } from "@/src/data/collectionStore";
 import { deleteAnalysisRecord, getStoredAnalysisHistory, saveAnalysisRecord } from "@/src/store/analysisStore";
 import { AnalysisRecord } from "@/src/types/analysis";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import { router, useLocalSearchParams } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
+import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-    Alert,
-    Modal,
-    Pressable,
-    ScrollView,
-    Share,
-    StyleSheet,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Alert,
+  Modal,
+  Pressable,
+  ScrollView,
+  Share,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
