@@ -52,6 +52,7 @@ export interface AnalysisRecord {
   note?: string;
   stomachState?: "Empty stomach" | "After meal";
   cupsToday?: number;
+  isNewCup?: boolean;
   riskLevel?: RiskLevel;
   narrative?: AnalysisNarrative;
 }

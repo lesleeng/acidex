@@ -1,4 +1,6 @@
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { router, useLocalSearchParams } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
 import React, { useEffect, useRef, useState } from "react";
 import {
     Animated,
@@ -22,7 +24,7 @@ import { UserPreferencesStore } from "@/src/data/userPreferencesStore";
 import {
     getNarrativeWithFallback,
 } from "@/src/services/aiAnalysisService";
-import { } from "@/src/services/analysisService";
+import { buildRuleBasedNarrative } from "@/src/services/analysisService";
 import { shareAnalysisPdf } from "@/src/services/exportService";
 import { syncHistoryRecordToSupabase } from "@/src/services/historySync";
 import { getLatestCachedAnalysis, getLatestStoredAnalysis, getStoredAnalysisHistory, saveAnalysisRecord } from "@/src/store/analysisStore";
@@ -96,6 +98,26 @@ function getScalePct(item: AnalysisRecord): number {
 function isDefaultCoffeeName(value?: string): boolean {
   if (!value) return false;
   return /^Sample\s+\d+$/i.test(value.trim());
+}
+
+function getAcidityFactorItems(item: AnalysisRecord): string[] {
+  const factors: string[] = [
+    `Instant coffee product/brand (${item.coffeeType})`,
+    "Coffee-to-water ratio (how concentrated you mix it)",
+    "Serving size and how many cups you drink",
+  ];
+
+  if (item.stomachState === "Empty stomach") {
+    factors.push("Empty stomach can increase perceived irritation");
+  } else if (item.stomachState === "After meal") {
+    factors.push("Having coffee after a meal can reduce irritation");
+  }
+
+  if ((item.cupsToday ?? 0) >= 2) {
+    factors.push("Multiple cups increase total acid exposure");
+  }
+
+  return factors.slice(0, 4);
 }
 
 function Toast({ visible, type }: { visible: boolean; type: ToastType }) {
@@ -358,6 +380,7 @@ function EmptyResultsOverlay() {
 }
 
 export default function ResultsScreen() {
+  const params = useLocalSearchParams<{ recordId?: string }>();
   const [latest, setLatest] = useState<AnalysisRecord | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isEditingNotes, setIsEditingNotes] = useState(false);
@@ -376,43 +399,58 @@ export default function ResultsScreen() {
   const [historyRecords, setHistoryRecords] = useState<AnalysisRecord[]>([]);
 
   const hasPromptedCoffeeName = useRef(false);
+  const isMountedRef = useRef(true);
+  const latestRef = useRef<AnalysisRecord | null>(null);
 
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
-    let mounted = true;
+  const loadLatest = React.useCallback(async () => {
+    const cached = getLatestCachedAnalysis();
+    const hasImmediateContent = Boolean(cached ?? latestRef.current);
+    setIsLoading(!hasImmediateContent);
 
-    const loadLatest = async () => {
-      setIsLoading(true);
-      const cached = getLatestCachedAnalysis();
-      const initial = cached ?? null;
-
-      if (mounted) {
-        setLatest(initial);
+    if (isMountedRef.current) {
+      setLatest(cached ?? null);
+      if (cached) {
+        setIsLoading(false);
       }
+    }
 
-      const stored = await getLatestStoredAnalysis();
-      const next = stored ?? cached ?? null;
+    const [stored, history] = await Promise.all([getLatestStoredAnalysis(), getStoredAnalysisHistory()]);
+    const sorted = [...history].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-      if (!mounted) return;
-      setLatest(next);
-      const history = await getStoredAnalysisHistory();
-      const sorted = [...history].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      setHistoryRecords(sorted);
-      const prev = sorted.find((item) => item.id !== next?.id) ?? null;
-      setPreviousRecord(prev);
-      setIsLoading(false);
-    };
+    const requestedRecordId = typeof params.recordId === "string" ? params.recordId : undefined;
+    const selectedFromHistory = requestedRecordId
+      ? sorted.find((item) => item.id === requestedRecordId) ?? null
+      : null;
 
-    loadLatest();
+    // Use explicit history selection when requested, otherwise newest history record.
+    const next = selectedFromHistory ?? sorted[0] ?? stored ?? cached ?? null;
+    if (!isMountedRef.current) return;
+    setLatest(next);
+    setHistoryRecords(sorted);
+    const prev = sorted.find((item) => item.id !== next?.id) ?? null;
+    setPreviousRecord(prev);
+    setIsLoading(false);
+  }, [params.recordId]);
 
+  useEffect(() => {
+    isMountedRef.current = true;
+    void loadLatest();
     return () => {
-      mounted = false;
+      isMountedRef.current = false;
       if (toastTimer.current) clearTimeout(toastTimer.current);
     };
-  }, []);
+  }, [loadLatest]);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      void loadLatest();
+    }, [loadLatest])
+  );
 
   useEffect(() => {
+    latestRef.current = latest;
     if (!latest) return;
 
     setNotesText(latest.note ?? "");
@@ -465,9 +503,19 @@ export default function ResultsScreen() {
     if (!latest) return;
 
     const nextCoffeeName = coffeeNameText.trim() || latest.coffeeType;
+    const nextCupsToday = latest.cupsToday ?? 1;
+    const nextRiskLevel = latest.riskLevel ?? "Low Risk";
     const nextRecord: AnalysisRecord = {
       ...latest,
       coffeeType: nextCoffeeName,
+      narrative: buildRuleBasedNarrative({
+        coffeeType: nextCoffeeName,
+        ph: latest.ph,
+        classification: latest.classification,
+        riskLevel: nextRiskLevel,
+        stomachState: latest.stomachState,
+        cupsToday: nextCupsToday,
+      }),
     };
 
     await saveAnalysisRecord(nextRecord);
@@ -563,6 +611,7 @@ export default function ResultsScreen() {
   const tips = latest ? getTipRows(latest, narrative?.tips ?? []) : [];
   const effects = narrative?.likelyEffectItems ?? [];
   const impacts = narrative?.impactItems ?? [];
+  const acidityFactors = latest ? getAcidityFactorItems(latest) : [];
   const showEmptyOverlay = !isLoading && !latest;
   const showSkeleton = isLoading || showEmptyOverlay;
   const contrastTextColor = preferences.highContrastEnabled ? "#1A1411" : undefined;
@@ -849,6 +898,14 @@ export default function ResultsScreen() {
                 {impacts.map((item: string, index: number) => (
                   <BulletItem key={`${item}-${index}`} text={item} />
                 ))}
+                <TouchableOpacity
+                  style={r.favoriteHistoryButton}
+                  onPress={() => router.push({ pathname: "/(tabs)/history", params: { filter: "Favorites" } })}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="bookmark" size={14} color="#4A3728" />
+                  <ThemedText style={r.favoriteHistoryButtonText}>open favorites in history</ThemedText>
+                </TouchableOpacity>
               </InnerBlock>
             </SectionCard>
 
@@ -861,7 +918,7 @@ export default function ResultsScreen() {
                 <View style={r.timingIconCircle}>
                   <Ionicons name="time-outline" size={16} color="#5B7FA6" />
                 </View>
-                <ThemedText style={r.timingText}>{narrative.safeTiming}</ThemedText>
+                <ThemedText style={r.timingText}>{narrative?.safeTiming ?? "Timing guidance unavailable."}</ThemedText>
               </View>
             </SectionCard>
 
@@ -872,7 +929,7 @@ export default function ResultsScreen() {
               </ThemedText>
               <InnerBlock>
                 <ThemedText style={r.innerBlockTitle}>What impacts acidity?</ThemedText>
-                {impacts.map((item: string, index: number) => (
+                {acidityFactors.map((item: string, index: number) => (
                   <BulletItem key={`${item}-${index}`} text={item} />
                 ))}
               </InnerBlock>
@@ -1267,6 +1324,23 @@ const r = StyleSheet.create({
     flexShrink: 0,
   },
   timingText: { flex: 1, fontSize: 13, lineHeight: 20, color: "#4E3D35" },
+  favoriteHistoryButton: {
+    marginTop: 8,
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#EAF0F6",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  favoriteHistoryButtonText: {
+    fontSize: 12,
+    color: "#4A3728",
+    fontWeight: "600",
+    textTransform: "lowercase",
+  },
 
   infoParagraph: { fontSize: 13, lineHeight: 20, color: "#4B3A33", marginBottom: 12 },
 

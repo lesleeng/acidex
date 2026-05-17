@@ -4,6 +4,7 @@ import { UserPreferencesStore } from "@/src/data/userPreferencesStore";
 import { getStoredAnalysisHistory } from "@/src/store/analysisStore";
 import { AnalysisRecord } from "@/src/types/analysis";
 import { Ionicons } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
 import React, { useEffect, useMemo, useState } from "react";
 import {
     Dimensions,
@@ -523,6 +524,15 @@ export default function DashboardScreen() {
     FILTER_OPTIONS.find((f) => f.days === 30)!
   );
 
+  const loadRecords = React.useCallback(async () => {
+    const stored = await getStoredAnalysisHistory();
+    const sortedOldestFirst = [...stored].sort(
+      (a, b) =>
+        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    );
+    setRecords(sortedOldestFirst);
+  }, []);
+
   useEffect(() => {
     let mounted = true;
 
@@ -530,24 +540,27 @@ export default function DashboardScreen() {
     setPreferences(UserPreferencesStore.get());
     const unsubscribe = UserPreferencesStore.subscribe(setPreferences);
 
-    const loadRecords = async () => {
+    void (async () => {
       const stored = await getStoredAnalysisHistory();
       if (!mounted) return;
-
       const sortedOldestFirst = [...stored].sort(
         (a, b) =>
           new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
       );
       setRecords(sortedOldestFirst);
-    };
-
-    loadRecords();
+    })();
 
     return () => {
       mounted = false;
       unsubscribe();
     };
   }, []);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      void loadRecords();
+    }, [loadRecords])
+  );
 
   const filteredEntries  = useMemo(
     () => filterByDays(selectedFilter.days, records),

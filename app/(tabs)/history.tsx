@@ -7,8 +7,9 @@ import { CollectionStore } from "@/src/data/collectionStore";
 import { deleteAnalysisRecord, getStoredAnalysisHistory, saveAnalysisRecord } from "@/src/store/analysisStore";
 import { AnalysisRecord } from "@/src/types/analysis";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { router, useLocalSearchParams } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
     Alert,
     Modal,
@@ -63,6 +64,8 @@ function getHealthAdvisory(item: AnalysisRecord): string {
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function HistoryScreen() {
+  const params = useLocalSearchParams<{ filter?: string }>();
+  const hasAppliedRouteFilter = useRef(false);
   const coffee = useThemeColor({}, "coffee");
   const [records,        setRecords]        = useState<AnalysisRecord[]>([]);
 
@@ -121,6 +124,16 @@ export default function HistoryScreen() {
     const collectionNames = Object.keys(collections).map((name) => `Collection: ${name}`);
     return ["All", "Favorites", ...collectionNames, ...uniqueCoffeeTypes];
   }, [records, collections]);
+
+  useEffect(() => {
+    if (hasAppliedRouteFilter.current) return;
+    const requestedFilter = typeof params.filter === "string" ? params.filter : undefined;
+    if (!requestedFilter) return;
+    if (filters.includes(requestedFilter)) {
+      setSelectedFilter(requestedFilter);
+      hasAppliedRouteFilter.current = true;
+    }
+  }, [filters, params.filter]);
 
   const sortedRecords = records;
 
@@ -292,8 +305,8 @@ export default function HistoryScreen() {
         ) : (
           filteredRecords.map((item) =>
             expandedId === item.id
-              ? <ExpandedCard key={item.id} item={item} onCollapse={() => setExpandedId(null)} onRename={() => openRenameModal(item)} onDelete={() => deleteRecord(item)} onAddToCollection={() => openCollectionModal(item)} />
-              : <CollapsedCard key={item.id} item={item} onExpand={() => setExpandedId(item.id)} onDelete={() => deleteRecord(item)} onAddToCollection={() => openCollectionModal(item)} />
+              ? <ExpandedCard key={item.id} item={item} onCollapse={() => setExpandedId(null)} onRename={() => openRenameModal(item)} onDelete={() => deleteRecord(item)} onAddToCollection={() => openCollectionModal(item)} onOpenResult={() => router.push({ pathname: "/(tabs)/results", params: { recordId: item.id } })} />
+              : <CollapsedCard key={item.id} item={item} onExpand={() => setExpandedId(item.id)} onDelete={() => deleteRecord(item)} onAddToCollection={() => openCollectionModal(item)} onOpenResult={() => router.push({ pathname: "/(tabs)/results", params: { recordId: item.id } })} />
           )
         )}
       </ScrollView>
@@ -383,7 +396,7 @@ export default function HistoryScreen() {
 
 // ─── Collapsed Card ───────────────────────────────────────────────────────────
 
-function CollapsedCard({ item, onExpand, onDelete, onAddToCollection }: { item: AnalysisRecord; onExpand: () => void; onDelete: () => void; onAddToCollection: () => void }) {
+function CollapsedCard({ item, onExpand, onDelete, onAddToCollection, onOpenResult }: { item: AnalysisRecord; onExpand: () => void; onDelete: () => void; onAddToCollection: () => void; onOpenResult: () => void }) {
   const cls  = CLASSIFICATION_COLORS[item.classification] ?? CLASSIFICATION_COLORS["Moderate"];
   const risk = RISK_COLORS[item.riskLevel ?? "Low Risk"]  ?? RISK_COLORS["Low Risk"];
 
@@ -400,7 +413,7 @@ function CollapsedCard({ item, onExpand, onDelete, onAddToCollection }: { item: 
   };
 
   return (
-    <TouchableOpacity activeOpacity={0.85} style={s.card} onPress={onExpand}>
+    <TouchableOpacity activeOpacity={0.85} style={s.card} onPress={onOpenResult}>
       {/* date + chevron */}
       <View style={s.cardTopRow}>
         <ThemedText style={s.cardDate}>{formatCardDate(item.createdAt)}</ThemedText>
@@ -414,7 +427,9 @@ function CollapsedCard({ item, onExpand, onDelete, onAddToCollection }: { item: 
           <TouchableOpacity onPress={handleBookmarkToggle} activeOpacity={0.7}>
             <Ionicons name={isBookmarked ? 'bookmark' : 'bookmark-outline'} size={16} color={isBookmarked ? '#4A3728' : '#C4A882'} />
           </TouchableOpacity>
-          <Ionicons name="chevron-down" size={16} color="#C4A882" />
+          <TouchableOpacity onPress={onExpand} activeOpacity={0.7}>
+            <Ionicons name="chevron-down" size={16} color="#C4A882" />
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -460,12 +475,14 @@ function ExpandedCard({
   onRename,
   onDelete,
   onAddToCollection,
+  onOpenResult,
 }: {
   item: AnalysisRecord;
   onCollapse: () => void;
   onRename: () => void;
   onDelete: () => void;
   onAddToCollection: () => void;
+  onOpenResult: () => void;
 }) {
   const cls  = CLASSIFICATION_COLORS[item.classification] ?? CLASSIFICATION_COLORS["Moderate"];
   const risk = RISK_COLORS[item.riskLevel ?? "Low Risk"]  ?? RISK_COLORS["Low Risk"];
@@ -562,6 +579,11 @@ function ExpandedCard({
         <ThemedText style={s.notesTitle}>Personal Notes</ThemedText>
         <ThemedText style={s.notesText}>{item.note || "No notes added."}</ThemedText>
       </View>
+
+      <TouchableOpacity style={s.viewResultBtn} onPress={onOpenResult} activeOpacity={0.8}>
+        <Ionicons name="open-outline" size={14} color="#4A3728" />
+        <ThemedText style={s.viewResultBtnText}>view full result</ThemedText>
+      </TouchableOpacity>
 
     </TouchableOpacity>
   );
@@ -688,6 +710,21 @@ const s = StyleSheet.create({
   notesBlock: { marginBottom: 14 },
   notesTitle: { fontSize: 12, fontWeight: "700", color: "#2E211B", marginBottom: 6 },
   notesText:  { fontSize: 12, lineHeight: 19, color: "#7A675C" },
+  viewResultBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    backgroundColor: "#F4EEEA",
+    borderRadius: 999,
+    paddingVertical: 10,
+  },
+  viewResultBtnText: {
+    fontSize: 12,
+    color: "#4A3728",
+    fontWeight: "600",
+    textTransform: "lowercase",
+  },
 
   // csv
   csvButton: {

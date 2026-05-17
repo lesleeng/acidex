@@ -26,6 +26,29 @@ type HistoryRow = {
   is_bookmarked: boolean;
 };
 
+function toAnalysisRecord(row: HistoryRow): AnalysisRecord {
+  return {
+    id: row.id,
+    createdAt: row.created_at,
+    coffeeType: row.coffee_type,
+    ph: row.ph,
+    classification: row.classification,
+    binaryLabel: row.binary_label ?? undefined,
+    mlConfidence: row.ml_confidence ?? undefined,
+    mlModelKey: row.ml_model_key ?? undefined,
+    mlModelName: row.ml_model_name ?? undefined,
+    stabilizationTimeSec: row.stabilization_time_sec ?? undefined,
+    averageVoltage: row.average_voltage ?? undefined,
+    samplesCollected: row.samples_collected ?? undefined,
+    sampleId: row.sample_id ?? undefined,
+    note: row.note ?? undefined,
+    stomachState: row.stomach_state ?? undefined,
+    cupsToday: row.cups_today ?? undefined,
+    riskLevel: row.risk_level ?? undefined,
+    narrative: row.narrative ?? undefined,
+  };
+}
+
 type QueuedSyncItem = {
   record: AnalysisRecord;
   isBookmarked: boolean;
@@ -283,5 +306,28 @@ export async function flushQueuedHistorySync(): Promise<void> {
       isSyncing: false,
       lastError: error instanceof Error ? error.message : "Unknown sync error",
     });
+  }
+}
+
+export async function pullHistoryFromSupabase(): Promise<AnalysisRecord[] | null> {
+  try {
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    if (userError || !userData.user) return null;
+
+    const { data, error } = await supabase
+      .from("history")
+      .select("*")
+      .eq("profile_id", userData.user.id)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.log("pullHistoryFromSupabase error:", error.message);
+      return null;
+    }
+
+    return ((data ?? []) as HistoryRow[]).map(toAnalysisRecord);
+  } catch (error) {
+    console.log("pullHistoryFromSupabase exception:", error);
+    return null;
   }
 }

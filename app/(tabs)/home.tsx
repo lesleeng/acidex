@@ -27,7 +27,7 @@ import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
     ActivityIndicator,
     Animated,
@@ -82,6 +82,26 @@ type FactType = {
   suggestion: string;
   references: string[];
 };
+
+const FactCard = memo(function FactCard({
+  fact,
+  onPress,
+}: {
+  fact: FactType;
+  onPress: (fact: FactType) => void;
+}) {
+  return (
+    <Pressable
+      onPress={() => onPress(fact)}
+      style={({ pressed }) => [styles.cardWrapper, pressed && styles.cardWrapperPressed]}
+    >
+      <View style={styles.smallCard}>
+        <Image source={fact.image} style={styles.coffeeImage} contentFit="contain" />
+        <ThemedText style={styles.smallCardText}>{fact.shortFact}</ThemedText>
+      </View>
+    </Pressable>
+  );
+});
 
 const factsData: FactType[] = [
   {
@@ -191,6 +211,7 @@ export default function HomeScreen() {
   const [analyzeModalVisible,  setAnalyzeModalVisible]  = useState(false);
   const [analyzeStatus,        setAnalyzeStatus]        = useState<AnalyzeStatus>("idle");
   const [stomachState,         setStomachState]         = useState<StomachState>(null);
+  const [isNewCup,             setIsNewCup]             = useState(true);
   const [probeReady,           setProbeReady]           = useState(false);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
   const [analyzeStage, setAnalyzeStage] = useState<ArduinoReadStage | "persisting" | "llm" | null>(null);
@@ -206,6 +227,7 @@ export default function HomeScreen() {
 
   const fallbackDefaultAvatar = useMemo(() => DEFAULT_AVATARS[0], []);
   const loopedFacts = useMemo(() => [...facts, ...facts, ...facts], [facts]);
+  const isCarouselPaused = analyzeModalVisible || analyzeStatus === "analyzing";
   const analyzeProgress = analyzeStage ? ANALYZE_STAGE_PROGRESS[analyzeStage] : 0.08;
   const analyzeHint = analyzeStage ? ANALYZE_STAGE_HINTS[analyzeStage] : "preparing";
 
@@ -254,15 +276,16 @@ export default function HomeScreen() {
   }, []);
 
   useEffect(() => {
+    if (isCarouselPaused) return;
     if (!loopedFacts.length) return;
     const rotateTimer = setInterval(() => {
-      const nextIndex = carouselIndexRef.current + 1;
+      const nextIndex = (carouselIndexRef.current + 1) % loopedFacts.length;
       flatListRef.current?.scrollToIndex({ index: nextIndex, animated: true });
       carouselIndexRef.current = nextIndex;
     }, 12000);
 
     return () => clearInterval(rotateTimer);
-  }, [loopedFacts.length]);
+  }, [isCarouselPaused, loopedFacts.length]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -415,6 +438,7 @@ export default function HomeScreen() {
     setPendingRecord(null);
     setSerialDebugLines([]);
     setCupsTodayInput("1");
+    setIsNewCup(true);
 
     if (!hasOtg) {
       setAnalyzeStatus("no-device");
@@ -480,6 +504,7 @@ export default function HomeScreen() {
       ...pendingRecord,
       stomachState,
       cupsToday: Number(cupsTodayInput) || 1,
+      isNewCup,
       riskLevel: nextRiskLevel,
       narrative: buildRuleBasedNarrative({
         coffeeType: pendingRecord.coffeeType,
@@ -487,7 +512,7 @@ export default function HomeScreen() {
         classification: pendingRecord.classification,
         riskLevel: nextRiskLevel,
         stomachState,
-        cupsToday: pendingRecord.cupsToday,
+        cupsToday: Number(cupsTodayInput) || 1,
       }),
     };
 
@@ -522,7 +547,7 @@ export default function HomeScreen() {
     return () => {
       cancelled = true;
     };
-  }, [analyzeStatus, pendingRecord, probeReady, stomachState, cupsTodayInput]);
+  }, [analyzeStatus, pendingRecord, probeReady, stomachState, cupsTodayInput, isNewCup]);
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -532,6 +557,7 @@ export default function HomeScreen() {
   };
 
   const handleInfiniteScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (isCarouselPaused) return;
     const offsetX      = event.nativeEvent.contentOffset.x;
     const contentWidth = event.nativeEvent.contentSize.width;
     const singleSetWidth = contentWidth / 3;
@@ -553,6 +579,7 @@ export default function HomeScreen() {
       setAnalyzeError(null);
       setAnalyzeStage(null);
       setCupsTodayInput("1");
+      setIsNewCup(true);
     }
   };
 
@@ -638,16 +665,13 @@ export default function HomeScreen() {
   }, [analyzeProgress, progressAnim]);
 
   // ── Fact card ─────────────────────────────────────────────────────────────
-  const FactCard = ({ fact }: { fact: FactType }) => (
-    <Pressable
-      onPress={() => setSelectedFact(fact)}
-      style={({ pressed }) => [styles.cardWrapper, pressed && styles.cardWrapperPressed]}
-    >
-      <View style={styles.smallCard}>
-        <Image source={fact.image} style={styles.coffeeImage} contentFit="contain" />
-        <ThemedText style={styles.smallCardText}>{fact.shortFact}</ThemedText>
-      </View>
-    </Pressable>
+  const handlePressFact = useCallback((fact: FactType) => {
+    setSelectedFact(fact);
+  }, []);
+
+  const renderFactCard = useCallback(
+    ({ item }: { item: FactType }) => <FactCard fact={item} onPress={handlePressFact} />,
+    [handlePressFact]
   );
 
   // ── Streak label ──────────────────────────────────────────────────────────
@@ -732,10 +756,11 @@ export default function HomeScreen() {
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.horizontalScrollContent}
-          renderItem={({ item }) => <FactCard fact={item} />}
+          renderItem={renderFactCard}
           onScroll={handleInfiniteScroll}
           onMomentumScrollEnd={(event) => {
-            const next = Math.round(event.nativeEvent.contentOffset.x / ITEM_SIZE);
+            const raw = Math.round(event.nativeEvent.contentOffset.x / ITEM_SIZE);
+            const next = loopedFacts.length > 0 ? ((raw % loopedFacts.length) + loopedFacts.length) % loopedFacts.length : 0;
             carouselIndexRef.current = next;
           }}
           scrollEventThrottle={16}
@@ -1033,6 +1058,25 @@ export default function HomeScreen() {
                           </TouchableOpacity>
                         );
                       })}
+                    </View>
+                    <View style={styles.newCupRow}>
+                      <ThemedText style={styles.newCupLabel}>new cup?</ThemedText>
+                      <View style={styles.newCupOptions}>
+                        <TouchableOpacity
+                          activeOpacity={0.8}
+                          style={[styles.newCupOption, isNewCup && { backgroundColor: coffee, borderColor: coffee }]}
+                          onPress={() => setIsNewCup(true)}
+                        >
+                          <ThemedText style={[styles.newCupOptionText, isNewCup && { color: "#FFF" }]}>yes</ThemedText>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          activeOpacity={0.8}
+                          style={[styles.newCupOption, !isNewCup && { backgroundColor: coffee, borderColor: coffee }]}
+                          onPress={() => setIsNewCup(false)}
+                        >
+                          <ThemedText style={[styles.newCupOptionText, !isNewCup && { color: "#FFF" }]}>no</ThemedText>
+                        </TouchableOpacity>
+                      </View>
                     </View>
                     <View style={styles.cupsRow}>
                       <ThemedText style={styles.cupsLabel}>cups today</ThemedText>
@@ -1386,6 +1430,37 @@ const styles = StyleSheet.create({
   },
   stomachOptionText: {
     flex: 1, fontSize: 13, fontWeight: "600", color: "#3C2C24",
+  },
+  newCupRow: {
+    marginTop: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  newCupLabel: {
+    fontSize: 12,
+    color: "#3C2C24",
+    fontWeight: "600",
+    textTransform: "lowercase",
+  },
+  newCupOptions: { flexDirection: "row", gap: 8 },
+  newCupOption: {
+    minWidth: 54,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#EDE3DC",
+    backgroundColor: "#FFFAF7",
+  },
+  newCupOptionText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#3C2C24",
+    textTransform: "lowercase",
   },
   stomachConfirmed: {
     flexDirection: "row", alignItems: "center", gap: 5, marginTop: 10,
