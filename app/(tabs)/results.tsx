@@ -40,6 +40,9 @@ const RISK_COLORS = {
   "Low Risk": { bg: "#DCF0E4", text: "#1A5C34" },
 } as const;
 
+const UX_DISCLAIMER_TEXT =
+  "For awareness only, not medical care. This is not a diagnosis or treatment plan. For reflux, GERD, or dental concerns, consult a qualified healthcare professional.";
+
 type ToastType = "save" | "bookmark" | "unbookmark";
 
 const TOAST_CONFIG: Record<
@@ -79,7 +82,7 @@ function getTipRows(item: AnalysisRecord, texts: string[]) {
       text:
         texts[3] ??
         (item.classification === "Highly Acidic"
-          ? "Switch to lower-acidity types like brewed or decaf"
+          ? "Switch to lower-acidity instant options or decaf"
           : "Avoid drinking coffee too quickly to reduce irritation"),
     },
   ];
@@ -364,9 +367,13 @@ export default function ResultsScreen() {
   const [toastType, setToastType] = useState<ToastType>("save");
   const [isBookmarked, setIsBookmarked] = useState(false);
   const [renameModalVisible, setRenameModalVisible] = useState(false);
+  const [collectionModalVisible, setCollectionModalVisible] = useState(false);
+  const [collectionNameInput, setCollectionNameInput] = useState("");
+  const [selectedCollectionRecordIds, setSelectedCollectionRecordIds] = useState<string[]>([]);
   const [preferences, setPreferences] = useState(UserPreferencesStore.defaults);
   const [collections, setCollections] = useState(CollectionStore.getAll());
   const [previousRecord, setPreviousRecord] = useState<AnalysisRecord | null>(null);
+  const [historyRecords, setHistoryRecords] = useState<AnalysisRecord[]>([]);
 
   const hasPromptedCoffeeName = useRef(false);
 
@@ -391,6 +398,7 @@ export default function ResultsScreen() {
       setLatest(next);
       const history = await getStoredAnalysisHistory();
       const sorted = [...history].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      setHistoryRecords(sorted);
       const prev = sorted.find((item) => item.id !== next?.id) ?? null;
       setPreviousRecord(prev);
       setIsLoading(false);
@@ -496,6 +504,29 @@ export default function ResultsScreen() {
     showToast("bookmark");
   };
 
+  const openCreateCollectionModal = () => {
+    setCollectionNameInput("");
+    setSelectedCollectionRecordIds(latest ? [latest.id] : []);
+    setCollectionModalVisible(true);
+  };
+
+  const toggleRecordInCollectionDraft = (recordId: string) => {
+    setSelectedCollectionRecordIds((current) =>
+      current.includes(recordId) ? current.filter((id) => id !== recordId) : [...current, recordId]
+    );
+  };
+
+  const saveCollection = async () => {
+    const name = collectionNameInput.trim();
+    if (!name) return;
+    await CollectionStore.create(name, selectedCollectionRecordIds);
+    setCollectionModalVisible(false);
+  };
+
+  const handleDeleteCollection = async (name: string) => {
+    await CollectionStore.removeCollection(name);
+  };
+
   const handleShare = async () => {
     if (!latest) return;
 
@@ -507,7 +538,7 @@ export default function ResultsScreen() {
       narrative?.safeTiming ? `Best timing: ${narrative.safeTiming}` : null,
       narrative?.summary ?? "",
       "",
-      "AI-assisted guidance. Not a medical diagnosis.",
+      UX_DISCLAIMER_TEXT,
     ]
       .filter(Boolean)
       .join("\n");
@@ -650,7 +681,7 @@ export default function ResultsScreen() {
 
                 <ThemedText style={[r.summaryText, preferences.largeTextEnabled && r.summaryTextLarge, contrastTextColor ? { color: contrastTextColor } : null]}>{narrative?.summary}</ThemedText>
                 <ThemedText style={[r.disclaimerText, preferences.largeTextEnabled && r.summaryTextLarge, contrastTextColor ? { color: contrastTextColor } : null]}>
-                  Health advisories use AI assistance and are for informational purposes only.
+                  {UX_DISCLAIMER_TEXT}
                 </ThemedText>
               </InnerBlock>
 
@@ -734,27 +765,35 @@ export default function ResultsScreen() {
             <SectionCard title="Collections" accent="warm">
               <InnerBlock>
                 <View style={r.collectionRow}>
-                  {["morning brews", "low acid"].map((name) => {
+                  {Object.keys(collections).map((name) => {
                     const active = latest ? (collections[name] ?? []).includes(latest.id) : false;
                     return (
-                      <TouchableOpacity
-                        key={name}
-                        style={[r.collectionChip, active && r.collectionChipActive]}
-                        onPress={() => latest && void CollectionStore.toggle(name, latest.id)}
-                        activeOpacity={0.8}
-                      >
-                        <ThemedText style={[r.collectionChipText, active && r.collectionChipTextActive]}>
-                          {name}
-                        </ThemedText>
-                      </TouchableOpacity>
+                      <View key={name} style={[r.collectionChip, active && r.collectionChipActive, r.collectionChipRow]}>
+                        <TouchableOpacity
+                          onPress={() => latest && void CollectionStore.toggle(name, latest.id)}
+                          activeOpacity={0.8}
+                          style={r.collectionChipLabelWrap}
+                        >
+                          <ThemedText style={[r.collectionChipText, active && r.collectionChipTextActive]}>
+                            {name}
+                          </ThemedText>
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => void handleDeleteCollection(name)} activeOpacity={0.7}>
+                          <Ionicons name="trash-outline" size={13} color={active ? "#FFF" : "#8B6A55"} />
+                        </TouchableOpacity>
+                      </View>
                     );
                   })}
+                  <TouchableOpacity style={r.collectionCreateBtn} onPress={openCreateCollectionModal} activeOpacity={0.8}>
+                    <Ionicons name="add" size={14} color="#4A3728" />
+                    <ThemedText style={r.collectionCreateText}>new collection</ThemedText>
+                  </TouchableOpacity>
                 </View>
               </InnerBlock>
             </SectionCard>
 
             {latest && previousRecord && (
-              <SectionCard title="This Brew vs Last Brew" accent="slate">
+              <SectionCard title="Latest vs Previous Result" accent="slate">
                 <InnerBlock>
                   <ThemedText style={r.compareLine}>
                     {latest.coffeeType}: pH {latest.ph.toFixed(1)} ({latest.riskLevel})
@@ -844,6 +883,71 @@ export default function ResultsScreen() {
       </ScrollView>
 
       {showEmptyOverlay ? <EmptyResultsOverlay /> : null}
+
+      <Modal
+        transparent
+        animationType="fade"
+        visible={collectionModalVisible}
+        onRequestClose={() => setCollectionModalVisible(false)}
+      >
+        <Pressable style={r.renameOverlay} onPress={() => setCollectionModalVisible(false)}>
+          <Pressable style={r.renameModal} onPress={() => null}>
+            <View style={r.renameHeader}>
+              <ThemedText style={r.renameTitle}>Create collection</ThemedText>
+              <ThemedText style={r.renameSubtitle}>Select coffees from your history</ThemedText>
+            </View>
+            <TextInput
+              style={r.titleInput}
+              value={collectionNameInput}
+              onChangeText={setCollectionNameInput}
+              placeholder="e.g., low acid picks"
+              placeholderTextColor="#A08880"
+              maxLength={40}
+            />
+            <ScrollView style={r.collectionModalList} showsVerticalScrollIndicator={false}>
+              {historyRecords.map((record) => {
+                const selected = selectedCollectionRecordIds.includes(record.id);
+                return (
+                  <TouchableOpacity
+                    key={record.id}
+                    style={[r.collectionPickRow, selected && r.collectionPickRowActive]}
+                    onPress={() => toggleRecordInCollectionDraft(record.id)}
+                    activeOpacity={0.8}
+                  >
+                    <View style={r.collectionPickMeta}>
+                      <ThemedText style={r.collectionPickTitle}>{record.coffeeType}</ThemedText>
+                      <ThemedText style={r.collectionPickSub}>
+                        {new Date(record.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })} • pH {record.ph.toFixed(1)}
+                      </ThemedText>
+                    </View>
+                    <Ionicons
+                      name={selected ? "checkmark-circle" : "ellipse-outline"}
+                      size={18}
+                      color={selected ? "#4A3728" : "#A08880"}
+                    />
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+            <View style={r.modalActions}>
+              <TouchableOpacity
+                style={[r.notesBtn, r.cancelBtn]}
+                onPress={() => setCollectionModalVisible(false)}
+                activeOpacity={0.7}
+              >
+                <ThemedText style={r.cancelBtnText}>cancel</ThemedText>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[r.notesBtn, r.saveBtn]}
+                onPress={() => void saveCollection()}
+                activeOpacity={0.7}
+              >
+                <ThemedText style={r.saveBtnText}>create</ThemedText>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <Modal
         transparent
@@ -1300,6 +1404,14 @@ const r = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 999,
   },
+  collectionChipRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  collectionChipLabelWrap: {
+    maxWidth: 140,
+  },
   collectionChipActive: {
     backgroundColor: "#4A3728",
   },
@@ -1310,6 +1422,53 @@ const r = StyleSheet.create({
   },
   collectionChipTextActive: {
     color: "#FFF",
+  },
+  collectionCreateBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#EFE4DB",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  collectionCreateText: {
+    fontSize: 12,
+    color: "#4A3728",
+    fontWeight: "600",
+  },
+  collectionModalList: {
+    marginTop: 12,
+    maxHeight: 260,
+  },
+  collectionPickRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#F4EEEA",
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    marginBottom: 8,
+  },
+  collectionPickRowActive: {
+    borderWidth: 1,
+    borderColor: "#C8B19E",
+    backgroundColor: "#F8EFE9",
+  },
+  collectionPickMeta: {
+    flex: 1,
+    marginRight: 8,
+  },
+  collectionPickTitle: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#2E211B",
+  },
+  collectionPickSub: {
+    marginTop: 2,
+    fontSize: 11,
+    color: "#8B6A55",
   },
   compareLine: {
     fontSize: 12,

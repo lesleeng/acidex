@@ -4,11 +4,13 @@ import Colors from "@/constants/colors";
 import { useThemeColor } from "@/hooks/use-theme-color";
 import { BookmarkStore } from "@/src/data/bookmarkStore";
 import { CollectionStore } from "@/src/data/collectionStore";
-import { getStoredAnalysisHistory, saveAnalysisRecord } from "@/src/store/analysisStore";
+import { deleteAnalysisRecord, getStoredAnalysisHistory, saveAnalysisRecord } from "@/src/store/analysisStore";
 import { AnalysisRecord } from "@/src/types/analysis";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
 import React, { useEffect, useMemo, useState } from "react";
 import {
+    Alert,
     Modal,
     Pressable,
     ScrollView,
@@ -50,12 +52,6 @@ function formatDetailDate(dateStr: string): string {
   });
 }
 
-function getRoastLabel(item: AnalysisRecord): string {
-  if (item.coffeeType === "Espresso") return "Dark roast";
-  if (item.coffeeType === "Latte")    return "Light roast";
-  return "Medium roast";
-}
-
 function getHealthAdvisory(item: AnalysisRecord): string {
   if (item.riskLevel === "High Risk")
     return "High likelihood of discomfort: Consider reducing intake or drinking after meals.";
@@ -77,6 +73,18 @@ export default function HistoryScreen() {
   const [renameText, setRenameText] = useState("");
   const [renameTarget, setRenameTarget] = useState<AnalysisRecord | null>(null);
   const [collections, setCollections] = useState(CollectionStore.getAll());
+  const [collectionModalVisible, setCollectionModalVisible] = useState(false);
+  const [collectionTarget, setCollectionTarget] = useState<AnalysisRecord | null>(null);
+  const [newCollectionName, setNewCollectionName] = useState("");
+  
+  const loadRecords = React.useCallback(async () => {
+    const stored = await getStoredAnalysisHistory();
+    const sorted = [...stored].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+    setRecords(sorted);
+    setExpandedId((current) => current ?? sorted[0]?.id ?? null);
+  }, []);
 
   const handleExportSummary = async () => {
     if (!filteredRecords.length) return;
@@ -93,28 +101,20 @@ export default function HistoryScreen() {
   };
 
   useEffect(() => {
-    let mounted = true;
-
-    const loadRecords = async () => {
-      const stored = await getStoredAnalysisHistory();
-      if (!mounted) return;
-
-      const sorted = [...stored].sort(
-        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      );
-      setRecords(sorted);
-      setExpandedId(sorted[0]?.id ?? null);
-    };
-
-    loadRecords();
+    void loadRecords();
     void CollectionStore.load();
     const unsubCollections = CollectionStore.subscribe(setCollections);
 
     return () => {
-      mounted = false;
       unsubCollections();
     };
-  }, []);
+  }, [loadRecords]);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      void loadRecords();
+    }, [loadRecords])
+  );
 
   const filters = useMemo(() => {
     const uniqueCoffeeTypes = Array.from(new Set(records.map((item) => item.coffeeType))).filter(Boolean);
@@ -171,6 +171,48 @@ export default function HistoryScreen() {
     closeRenameModal();
   };
 
+  const deleteRecord = (item: AnalysisRecord) => {
+    Alert.alert(
+      "Delete record",
+      `Remove "${item.coffeeType}" from history?`,
+      [
+        { text: "cancel", style: "cancel" },
+        {
+          text: "delete",
+          style: "destructive",
+          onPress: async () => {
+            await deleteAnalysisRecord(item.id);
+            await CollectionStore.removeRecordFromAll(item.id);
+            BookmarkStore.remove(item.id);
+            setRecords((current) => current.filter((record) => record.id !== item.id));
+            if (expandedId === item.id) {
+              setExpandedId(null);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const openCollectionModal = (item: AnalysisRecord) => {
+    setCollectionTarget(item);
+    setNewCollectionName("");
+    setCollectionModalVisible(true);
+  };
+
+  const toggleCollectionMembership = async (collectionName: string) => {
+    if (!collectionTarget) return;
+    await CollectionStore.toggle(collectionName, collectionTarget.id);
+  };
+
+  const createCollectionWithTarget = async () => {
+    if (!collectionTarget) return;
+    const name = newCollectionName.trim();
+    if (!name) return;
+    await CollectionStore.create(name, [collectionTarget.id]);
+    setNewCollectionName("");
+  };
+
   return (
     <ThemedView style={s.screen}>
       <ScrollView
@@ -203,6 +245,9 @@ export default function HistoryScreen() {
                 <Ionicons name="close-circle" size={16} color="#C4A882" />
               </TouchableOpacity>
             )}
+            <TouchableOpacity style={s.shareInlineBtn} onPress={handleExportSummary} activeOpacity={0.8}>
+              <Ionicons name="share-social-outline" size={16} color="#4A3728" />
+            </TouchableOpacity>
           </View>
 
           {/* filter chips */}
@@ -228,10 +273,6 @@ export default function HistoryScreen() {
             })}
           </ScrollView>
 
-          <TouchableOpacity style={s.exportButton} onPress={handleExportSummary} activeOpacity={0.8}>
-            <Ionicons name="share-social-outline" size={15} color="#4A3728" />
-            <ThemedText style={s.exportButtonText}>share history summary</ThemedText>
-          </TouchableOpacity>
         </View>
 
         {/* ── Count row ── */}
@@ -251,8 +292,8 @@ export default function HistoryScreen() {
         ) : (
           filteredRecords.map((item) =>
             expandedId === item.id
-              ? <ExpandedCard key={item.id} item={item} onCollapse={() => setExpandedId(null)} onRename={() => openRenameModal(item)} />
-              : <CollapsedCard key={item.id} item={item} onExpand={() => setExpandedId(item.id)} />
+              ? <ExpandedCard key={item.id} item={item} onCollapse={() => setExpandedId(null)} onRename={() => openRenameModal(item)} onDelete={() => deleteRecord(item)} onAddToCollection={() => openCollectionModal(item)} />
+              : <CollapsedCard key={item.id} item={item} onExpand={() => setExpandedId(item.id)} onDelete={() => deleteRecord(item)} onAddToCollection={() => openCollectionModal(item)} />
           )
         )}
       </ScrollView>
@@ -273,7 +314,7 @@ export default function HistoryScreen() {
               style={s.renameInput}
               value={renameText}
               onChangeText={setRenameText}
-              placeholder="e.g., Afternoon cold brew"
+              placeholder="e.g., Afternoon coffee"
               placeholderTextColor="#A08880"
               maxLength={40}
               autoFocus
@@ -297,13 +338,52 @@ export default function HistoryScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      <Modal
+        transparent
+        animationType="fade"
+        visible={collectionModalVisible}
+        onRequestClose={() => setCollectionModalVisible(false)}
+      >
+        <Pressable style={s.renameOverlay} onPress={() => setCollectionModalVisible(false)}>
+          <Pressable style={s.renameModal} onPress={() => null}>
+            <View style={s.renameHeader}>
+              <ThemedText style={s.renameTitle}>Add to collection</ThemedText>
+              <ThemedText style={s.renameSubtitle}>{collectionTarget?.coffeeType ?? ""}</ThemedText>
+            </View>
+            <TextInput
+              style={s.renameInput}
+              value={newCollectionName}
+              onChangeText={setNewCollectionName}
+              placeholder="new collection name"
+              placeholderTextColor="#A08880"
+              maxLength={40}
+            />
+            <TouchableOpacity style={s.collectionCreateBtn} onPress={() => void createCollectionWithTarget()} activeOpacity={0.8}>
+              <Ionicons name="add" size={14} color="#4A3728" />
+              <ThemedText style={s.collectionCreateText}>create and add</ThemedText>
+            </TouchableOpacity>
+            <ScrollView style={s.collectionList}>
+              {Object.keys(collections).map((name) => {
+                const selected = collectionTarget ? (collections[name] ?? []).includes(collectionTarget.id) : false;
+                return (
+                  <TouchableOpacity key={name} style={s.collectionRow} onPress={() => void toggleCollectionMembership(name)} activeOpacity={0.8}>
+                    <ThemedText style={s.collectionName}>{name}</ThemedText>
+                    <Ionicons name={selected ? "checkmark-circle" : "ellipse-outline"} size={18} color={selected ? "#4A3728" : "#A08880"} />
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </ThemedView>
   );
 }
 
 // ─── Collapsed Card ───────────────────────────────────────────────────────────
 
-function CollapsedCard({ item, onExpand }: { item: AnalysisRecord; onExpand: () => void }) {
+function CollapsedCard({ item, onExpand, onDelete, onAddToCollection }: { item: AnalysisRecord; onExpand: () => void; onDelete: () => void; onAddToCollection: () => void }) {
   const cls  = CLASSIFICATION_COLORS[item.classification] ?? CLASSIFICATION_COLORS["Moderate"];
   const risk = RISK_COLORS[item.riskLevel ?? "Low Risk"]  ?? RISK_COLORS["Low Risk"];
 
@@ -325,6 +405,12 @@ function CollapsedCard({ item, onExpand }: { item: AnalysisRecord; onExpand: () 
       <View style={s.cardTopRow}>
         <ThemedText style={s.cardDate}>{formatCardDate(item.createdAt)}</ThemedText>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <TouchableOpacity onPress={onAddToCollection} activeOpacity={0.7}>
+            <Ionicons name="add-circle-outline" size={16} color="#8B6A55" />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={onDelete} activeOpacity={0.7}>
+            <Ionicons name="trash-outline" size={16} color="#B56B5B" />
+          </TouchableOpacity>
           <TouchableOpacity onPress={handleBookmarkToggle} activeOpacity={0.7}>
             <Ionicons name={isBookmarked ? 'bookmark' : 'bookmark-outline'} size={16} color={isBookmarked ? '#4A3728' : '#C4A882'} />
           </TouchableOpacity>
@@ -372,10 +458,14 @@ function ExpandedCard({
   item,
   onCollapse,
   onRename,
+  onDelete,
+  onAddToCollection,
 }: {
   item: AnalysisRecord;
   onCollapse: () => void;
   onRename: () => void;
+  onDelete: () => void;
+  onAddToCollection: () => void;
 }) {
   const cls  = CLASSIFICATION_COLORS[item.classification] ?? CLASSIFICATION_COLORS["Moderate"];
   const risk = RISK_COLORS[item.riskLevel ?? "Low Risk"]  ?? RISK_COLORS["Low Risk"];
@@ -399,6 +489,12 @@ function ExpandedCard({
       <View style={s.cardTopRow}>
         <ThemedText style={s.expandedDate}>{formatDetailDate(item.createdAt)}</ThemedText>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <TouchableOpacity onPress={onAddToCollection} activeOpacity={0.7}>
+            <Ionicons name="add-circle-outline" size={16} color="#8B6A55" />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={onDelete} activeOpacity={0.7}>
+            <Ionicons name="trash-outline" size={16} color="#B56B5B" />
+          </TouchableOpacity>
           <TouchableOpacity onPress={onRename} activeOpacity={0.7}>
             <Ionicons name="pencil" size={15} color="#C4A882" />
           </TouchableOpacity>
@@ -422,7 +518,7 @@ function ExpandedCard({
 
           <View style={s.expandedMetaRow}>
             <Ionicons name="flame-outline" size={13} color="#A08880" />
-            <ThemedText style={s.expandedMetaText}>{getRoastLabel(item)}</ThemedText>
+            <ThemedText style={s.expandedMetaText}>instant coffee</ThemedText>
             {item.stomachState && (
               <>
                 <View style={s.metaDot} />
@@ -510,20 +606,14 @@ const s = StyleSheet.create({
   filterChipActive:    { backgroundColor: "#4A3728" },
   filterChipText:      { fontSize: 12, color: "#7A675C", fontWeight: "500" },
   filterChipTextActive:{ color: "#FFF", fontWeight: "600" },
-  exportButton: {
-    marginTop: 12,
-    flexDirection: "row",
+  shareInlineBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
-    backgroundColor: "#F4EEEA",
-    borderRadius: 999,
-    paddingVertical: 11,
-  },
-  exportButtonText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#4A3728",
+    marginLeft: 4,
+    backgroundColor: "rgba(196,168,130,0.18)",
   },
 
   // count
@@ -667,5 +757,39 @@ const s = StyleSheet.create({
     color: "#FFF",
     fontWeight: "600",
     textTransform: "lowercase",
+  },
+  collectionCreateBtn: {
+    marginTop: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    backgroundColor: "#F4EEEA",
+    borderRadius: 999,
+    paddingVertical: 9,
+  },
+  collectionCreateText: {
+    fontSize: 12,
+    color: "#4A3728",
+    fontWeight: "600",
+  },
+  collectionList: {
+    marginTop: 10,
+    maxHeight: 220,
+  },
+  collectionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#F4EEEA",
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    marginBottom: 8,
+  },
+  collectionName: {
+    fontSize: 13,
+    color: "#2E211B",
+    fontWeight: "600",
   },
 });

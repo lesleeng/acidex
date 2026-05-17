@@ -114,19 +114,16 @@ function getSummaryInsights(entries: AnalysisRecord[]): string[] {
 function getPatternInsights(entries: AnalysisRecord[]): string[] {
   if (!entries.length) return ["Not enough data for this period."];
   const avgPh = entries.reduce((s, e) => s + e.ph, 0) / entries.length;
-  const freq: Record<string, number> = {};
-  entries.forEach((e) => (freq[e.coffeeType] = (freq[e.coffeeType] || 0) + 1));
-  const mostCommon = Object.entries(freq).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "—";
   const highRisk   = entries.filter((e) => e.riskLevel === "High Risk").length;
   return [
     `Average pH across all entries: ${avgPh.toFixed(2)}.`,
-    `Most logged coffee type: ${mostCommon}.`,
+    `Total entries analyzed in this period: ${entries.length}.`,
     `High risk entries: ${highRisk} out of ${entries.length}.`,
   ];
 }
 
 function getComparisonInsight(entries: AnalysisRecord[]): string[] {
-  if (entries.length < 2) return ["Log one more analysis to compare your next brew."];
+  if (entries.length < 2) return ["Log one more analysis to compare your next result."];
 
   const latest = entries.at(-1)!;
   const previous = entries.at(-2)!;
@@ -139,7 +136,7 @@ function getComparisonInsight(entries: AnalysisRecord[]): string[] {
       : `risk shifted from ${previous.riskLevel.toLowerCase()} to ${latest.riskLevel.toLowerCase()}`;
 
   return [
-    `This brew is ${direction} than your previous one by ${diffText} pH.`,
+    `This result is ${direction} than your previous one by ${diffText} pH.`,
     `Compared with your last entry, ${riskText}.`,
   ];
 }
@@ -525,8 +522,6 @@ export default function DashboardScreen() {
   const [selectedFilter, setSelectedFilter] = useState<FilterOption>(
     FILTER_OPTIONS.find((f) => f.days === 30)!
   );
-  // null = both compact side-by-side, "bar" = bar expanded full, "donut" = donut expanded full
-  const [expandedChart, setExpandedChart] = useState<null | "bar" | "donut">(null);
 
   useEffect(() => {
     let mounted = true;
@@ -616,64 +611,10 @@ export default function DashboardScreen() {
         <LineChart entries={filteredEntries} />
       </Card>
 
-      {/* ── Bar + Donut (interactive expand) ── */}
-      <View style={s.splitRow}>
-
-        {/* TYPE VS PH */}
-        {expandedChart !== "donut" && (
-          <TouchableOpacity
-            activeOpacity={0.85}
-            style={[
-              s.splitCard,
-              s.splitCardLeft,
-              expandedChart === "bar" && s.splitCardFull,
-            ]}
-            onPress={() => setExpandedChart(expandedChart === "bar" ? null : "bar")}
-          >
-            <View style={s.splitCardHeader}>
-              <ThemedText style={s.cardTitle}>Type vs pH</ThemedText>
-              <Ionicons
-                name={expandedChart === "bar" ? "chevron-up" : "chevron-down"}
-                size={14} color="#A08880"
-              />
-            </View>
-            <View style={{ marginTop: 10 }}>
-              <BarChart
-                entries={filteredEntries}
-                expanded={expandedChart === "bar"}
-              />
-            </View>
-          </TouchableOpacity>
-        )}
-
-        {/* BREAKDOWN */}
-        {expandedChart !== "bar" && (
-          <TouchableOpacity
-            activeOpacity={0.85}
-            style={[
-              s.splitCard,
-              s.splitCardRight,
-              expandedChart === "donut" && s.splitCardFull,
-            ]}
-            onPress={() => setExpandedChart(expandedChart === "donut" ? null : "donut")}
-          >
-            <View style={s.splitCardHeader}>
-              <ThemedText style={s.cardTitle}>Breakdown</ThemedText>
-              <Ionicons
-                name={expandedChart === "donut" ? "chevron-up" : "chevron-down"}
-                size={14} color="#A08880"
-              />
-            </View>
-            <View style={{ marginTop: 10 }}>
-              <DonutChart
-                entries={filteredEntries}
-                showLegend={expandedChart === "donut"}
-              />
-            </View>
-          </TouchableOpacity>
-        )}
-
-      </View>
+      {/* ── Acidity Breakdown ── */}
+      <Card title="Acidity Breakdown" accent="cream">
+        <DonutChart entries={filteredEntries} showLegend />
+      </Card>
 
       {/* ── Summary Insights ── */}
       <Card title="Summary Insights" accent="peach">
@@ -706,7 +647,7 @@ export default function DashboardScreen() {
       </Card>
 
       {/* ── Compare + timing ── */}
-      <Card title="Compare with Last Brew" accent="slate">
+      <Card title="Compare with Last Result" accent="slate">
         {comparisonInsights.map((item, i) => (
           <View key={i} style={[s.bulletRow, i > 0 && { marginTop: 8 }]}>
             <View style={s.bullet} />

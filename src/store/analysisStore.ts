@@ -60,3 +60,24 @@ export async function saveAnalysisRecord(record: AnalysisRecord): Promise<void> 
     console.log("saveAnalysisRecord error:", error);
   }
 }
+
+export async function deleteAnalysisRecord(recordId: string): Promise<void> {
+  try {
+    const history = await getStoredAnalysisHistory();
+    const nextHistory = history.filter((item) => item.id !== recordId);
+
+    const latestRaw = await AsyncStorage.getItem(LATEST_ANALYSIS_KEY);
+    const latest = latestRaw ? (JSON.parse(latestRaw) as AnalysisRecord) : null;
+    const nextLatest =
+      latest?.id === recordId ? (nextHistory[0] ?? null) : latest;
+
+    latestAnalysisCache = nextLatest;
+
+    await AsyncStorage.multiSet([
+      [LATEST_ANALYSIS_KEY, JSON.stringify(nextLatest)],
+      [ANALYSIS_HISTORY_KEY, JSON.stringify(nextHistory)],
+    ]);
+  } catch (error) {
+    console.log("deleteAnalysisRecord error:", error);
+  }
+}

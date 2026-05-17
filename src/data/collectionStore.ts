@@ -6,8 +6,7 @@ export type CollectionMap = Record<string, string[]>;
 type Listener = (collections: CollectionMap) => void;
 
 let collections: CollectionMap = {
-  "morning brews": [],
-  "low acid": [],
+  
 };
 const listeners = new Set<Listener>();
 
@@ -50,6 +49,40 @@ export const CollectionStore = {
     if (next.has(recordId)) next.delete(recordId);
     else next.add(recordId);
     collections = { ...collections, [collectionName]: Array.from(next) };
+    notify();
+    await persist();
+  },
+
+  async create(collectionName: string, recordIds: string[] = []): Promise<void> {
+    const name = collectionName.trim();
+    if (!name) return;
+    collections = { ...collections, [name]: Array.from(new Set(recordIds)) };
+    notify();
+    await persist();
+  },
+
+  async removeCollection(collectionName: string): Promise<void> {
+    if (!collections[collectionName]) return;
+    const next = { ...collections };
+    delete next[collectionName];
+    collections = next;
+    notify();
+    await persist();
+  },
+
+  async setRecords(collectionName: string, recordIds: string[]): Promise<void> {
+    if (!collections[collectionName]) return;
+    collections = { ...collections, [collectionName]: Array.from(new Set(recordIds)) };
+    notify();
+    await persist();
+  },
+
+  async removeRecordFromAll(recordId: string): Promise<void> {
+    const next: CollectionMap = {};
+    Object.entries(collections).forEach(([name, ids]) => {
+      next[name] = ids.filter((id) => id !== recordId);
+    });
+    collections = next;
     notify();
     await persist();
   },

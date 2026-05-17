@@ -66,68 +66,71 @@ const DEFAULT_AVATARS = [
   require("../../assets/images/avatars/avatar4.png"),
 ];
 
-const factsData = [
+const FACT_IMAGES = [
+  require("../../assets/images/fact-1.png"),
+  require("../../assets/images/fact-2.png"),
+  require("../../assets/images/fact-3.png"),
+  require("../../assets/images/fact-4.png"),
+];
+
+type FactType = {
+  id: number;
+  image: number;
+  shortFact: string;
+  title: string;
+  fullText: string;
+  suggestion: string;
+  references: string[];
+};
+
+const factsData: FactType[] = [
   {
     id: 1,
-    image: require("../../assets/images/fact-1.png"),
-    shortFact: "Coffee naturally contains acids that affect both flavor and digestion.",
-    title: "Coffee naturally contains acids",
+    image: FACT_IMAGES[0],
+    shortFact: "Instant coffee acidity can vary by brand and formulation.",
+    title: "Instant coffee acidity varies",
     fullText:
-      "Coffee contains natural compounds such as chlorogenic acids, quinic acid, and citric acid. These acids contribute to coffee's bright, tangy, or fruity taste depending on the roast and brewing method. Light roasts usually retain more of these acids, while darker roasts often taste less acidic. Some of these compounds, especially chlorogenic acids, are also known for their antioxidant properties.",
-    suggestion: "Acidity is not always bad—it also helps create coffee's flavor profile.",
-    references: [
-      "Farah, A. (2012). Coffee Constituents. Royal Society of Chemistry.",
-      "NIH – National Library of Medicine: Chlorogenic acid studies.",
-      "Specialty Coffee Association (SCA).",
-    ],
+      "Instant coffee products can differ in acidity depending on raw material, processing, and additives. Two products with similar taste may still produce different pH readings.",
+    suggestion: "Compare your own readings across brands before choosing a daily option.",
+    references: ["Use repeated measurements in the app for better comparison."],
   },
   {
     id: 2,
-    image: require("../../assets/images/fact-2.png"),
-    shortFact: "Highly acidic coffee may trigger heartburn or stomach discomfort in sensitive people.",
-    title: "Acidic coffee can cause discomfort",
+    image: FACT_IMAGES[1],
+    shortFact: "Higher acidity may increase discomfort for sensitive users.",
+    title: "Acidity and discomfort",
     fullText:
-      "Coffee can stimulate stomach acid production. In some individuals, especially those with sensitive digestion, this may lead to symptoms such as heartburn, acid reflux, or mild stomach discomfort. Caffeine may also relax the lower esophageal sphincter, making it easier for stomach acid to rise into the esophagus.",
-    suggestion: "If coffee upsets your stomach, try drinking it after meals or choosing low-acid options.",
-    references: [
-      "American College of Gastroenterology.",
-      "Harvard Health Publishing – Coffee and GERD.",
-      "NIDDK (National Institute of Diabetes and Digestive and Kidney Diseases).",
-    ],
+      "People with sensitive digestion may notice more discomfort when acidity is higher. Track both pH and how you feel to find your safer routine.",
+    suggestion: "Use your pH trend with symptom notes for better personal decisions.",
+    references: ["General gastrointestinal guidance from healthcare providers."],
   },
   {
     id: 3,
-    image: require("../../assets/images/fact-3.png"),
-    shortFact: "Cold brew is often less acidic than hot brewed coffee.",
-    title: "Cold brew is usually less acidic",
+    image: FACT_IMAGES[2],
+    shortFact: "Serving timing can affect how your stomach responds.",
+    title: "Timing still matters",
     fullText:
-      "Cold brew coffee is made by steeping grounds in cold water for several hours. Because the extraction happens at a lower temperature, fewer acidic compounds are pulled out compared to hot brewing methods. This is why cold brew often tastes smoother and may feel gentler on the stomach for some drinkers.",
-    suggestion: "Cold brew may be a better choice if you want a smoother, lower-acid coffee experience.",
-    references: [
-      "Rao, N. Z., & Fuller, M. (2018). Acidity and antioxidant activity of cold brew coffee.",
-      "Scientific Reports.",
-      "Coffee chemistry studies on brew temperature and acid extraction.",
-    ],
+      "Even with instant coffee, timing can influence discomfort. Some users tolerate coffee better with food than on an empty stomach.",
+    suggestion: "If discomfort occurs, try having instant coffee after a meal.",
+    references: ["Use your logged stomach-state trend for personal timing decisions."],
   },
   {
     id: 4,
-    image: require("../../assets/images/fact-4.png"),
-    shortFact: "Acidic coffee may irritate the stomach lining in some people.",
-    title: "Coffee may irritate the stomach lining",
+    image: FACT_IMAGES[3],
+    shortFact: "Consistency helps: repeated checks are better than one reading.",
+    title: "Use trend, not one sample",
     fullText:
-      "For some people, coffee can worsen stomach irritation, especially if they already have gastritis, reflux, or a sensitive stomach. This is not caused by acidity alone—caffeine and other compounds in coffee may also contribute. Tolerance varies from person to person, so one person may feel fine while another experiences discomfort after a single cup.",
-    suggestion: "Pay attention to your own body's response—personal tolerance matters most.",
-    references: [
-      "National Institutes of Health (NIH).",
-      "Mayo Clinic – Gastritis and diet guidance.",
-      "World Journal of Gastroenterology.",
-    ],
+      "A single result can be noisy. Multiple readings over time give better insight into your personal pattern for instant coffee tolerance.",
+    suggestion: "Track several entries per product before deciding what works best.",
+    references: ["History trends are more reliable than one-off results."],
   },
 ];
 
-const loopedFacts = [...factsData, ...factsData, ...factsData];
-
-type FactType = (typeof factsData)[0];
+const DID_YOU_KNOW_CACHE_KEY = "acidex_did_you_know_facts_v1";
+const DID_YOU_KNOW_LAST_SYNC_KEY = "acidex_did_you_know_last_sync_v1";
+const DID_YOU_KNOW_REFRESH_MS = 30 * 60 * 1000;
+const DID_YOU_KNOW_FUNCTION_NAME =
+  process.env.EXPO_PUBLIC_DID_YOU_KNOW_LLM_FUNCTION_NAME || "did-you-know-llm";
 type AnalyzeStatus = "idle" | "no-device" | "usb-permission" | "analyzing" | "done" | "error";
 type StomachState = "Empty stomach" | "After meal" | null;
 
@@ -167,11 +170,13 @@ const LAST_ANALYSIS_DATE_KEY = "acidex_last_analysis_date";
 export default function HomeScreen() {
   const router       = useRouter();
   const flatListRef  = useRef<FlatList<FactType>>(null);
+  const carouselIndexRef = useRef(0);
   const lastAnalyzeStageRef = useRef<ArduinoReadStage | "persisting" | "llm" | null>(null);
 
   const [avatarUrl,    setAvatarUrl]    = useState<string | null>(null);
   const [avatarIndex,  setAvatarIndex]  = useState<number | null>(null);
   const [userName,     setUserName]     = useState("User");
+  const [facts, setFacts] = useState<FactType[]>(factsData);
   const [selectedFact, setSelectedFact] = useState<FactType | null>(null);
   const [calibrationHelpVisible, setCalibrationHelpVisible] = useState(false);
   const [cupsTodayInput, setCupsTodayInput] = useState("1");
@@ -200,6 +205,7 @@ export default function HomeScreen() {
   const text   = useThemeColor({}, "text");
 
   const fallbackDefaultAvatar = useMemo(() => DEFAULT_AVATARS[0], []);
+  const loopedFacts = useMemo(() => [...facts, ...facts, ...facts], [facts]);
   const analyzeProgress = analyzeStage ? ANALYZE_STAGE_PROGRESS[analyzeStage] : 0.08;
   const analyzeHint = analyzeStage ? ANALYZE_STAGE_HINTS[analyzeStage] : "preparing";
 
@@ -237,14 +243,120 @@ export default function HomeScreen() {
     fetchUserAndAvatar();
     loadStreak();
     refreshOtgStatus();
+    void refreshDidYouKnowFacts();
   }, []);
 
   useEffect(() => {
+    const refreshTimer = setInterval(() => {
+      void refreshDidYouKnowFacts();
+    }, DID_YOU_KNOW_REFRESH_MS);
+    return () => clearInterval(refreshTimer);
+  }, []);
+
+  useEffect(() => {
+    if (!loopedFacts.length) return;
+    const rotateTimer = setInterval(() => {
+      const nextIndex = carouselIndexRef.current + 1;
+      flatListRef.current?.scrollToIndex({ index: nextIndex, animated: true });
+      carouselIndexRef.current = nextIndex;
+    }, 12000);
+
+    return () => clearInterval(rotateTimer);
+  }, [loopedFacts.length]);
+
+  useEffect(() => {
     const timer = setTimeout(() => {
-      flatListRef.current?.scrollToIndex({ index: factsData.length, animated: false });
+      flatListRef.current?.scrollToIndex({ index: facts.length, animated: false });
+      carouselIndexRef.current = facts.length;
     }, 100);
     return () => clearTimeout(timer);
-  }, []);
+  }, [facts.length]);
+
+  const normalizeLlmFacts = (raw: unknown): FactType[] | null => {
+    let payload: unknown = raw;
+    if (typeof raw === "string") {
+      try {
+        payload = JSON.parse(raw);
+      } catch {
+        return null;
+      }
+    }
+
+    const factsRaw = Array.isArray(payload)
+      ? payload
+      : (payload as { facts?: unknown })?.facts;
+    if (!Array.isArray(factsRaw)) return null;
+
+    const mapped = factsRaw
+      .map((item, index) => {
+        if (!item || typeof item !== "object") return null;
+        const row = item as Record<string, unknown>;
+        const shortFact = typeof row.shortFact === "string" ? row.shortFact.trim() : "";
+        const title = typeof row.title === "string" ? row.title.trim() : "";
+        const fullText = typeof row.fullText === "string" ? row.fullText.trim() : "";
+        const suggestion = typeof row.suggestion === "string" ? row.suggestion.trim() : "";
+        const references = Array.isArray(row.references)
+          ? row.references.filter((v): v is string => typeof v === "string").slice(0, 3)
+          : [];
+
+        if (!shortFact || !title || !fullText || !suggestion) return null;
+        return {
+          id: index + 1,
+          image: FACT_IMAGES[index % FACT_IMAGES.length],
+          shortFact: shortFact.slice(0, 140),
+          title: title.slice(0, 64),
+          fullText: fullText.slice(0, 480),
+          suggestion: suggestion.slice(0, 180),
+          references: references.length > 0 ? references : ["Generated instant-coffee insight."],
+        } as FactType;
+      })
+      .filter((item): item is FactType => !!item);
+
+    return mapped.length >= 3 ? mapped : null;
+  };
+
+  const refreshDidYouKnowFacts = async () => {
+    try {
+      const [cachedRaw, lastSyncRaw] = await Promise.all([
+        AsyncStorage.getItem(DID_YOU_KNOW_CACHE_KEY),
+        AsyncStorage.getItem(DID_YOU_KNOW_LAST_SYNC_KEY),
+      ]);
+
+      if (cachedRaw) {
+        const parsed = normalizeLlmFacts(JSON.parse(cachedRaw));
+        if (parsed) setFacts(parsed);
+      }
+
+      const lastSync = lastSyncRaw ? Number(lastSyncRaw) : 0;
+      if (Date.now() - lastSync < DID_YOU_KNOW_REFRESH_MS) return;
+
+      const { data, error } = await supabase.functions.invoke(DID_YOU_KNOW_FUNCTION_NAME, {
+        body: {
+          topic: "instant-coffee-only",
+          maxCards: 5,
+          tokenBudgetHint: 900,
+          style: "short, practical, consumer-safe",
+          constraints: [
+            "instant coffee only",
+            "no brewed coffee references",
+            "no medical diagnosis claims",
+          ],
+        },
+      });
+
+      if (error) return;
+      const parsed = normalizeLlmFacts(data);
+      if (!parsed) return;
+
+      setFacts(parsed);
+      await Promise.all([
+        AsyncStorage.setItem(DID_YOU_KNOW_CACHE_KEY, JSON.stringify({ facts: parsed })),
+        AsyncStorage.setItem(DID_YOU_KNOW_LAST_SYNC_KEY, String(Date.now())),
+      ]);
+    } catch (error) {
+      console.log("refreshDidYouKnowFacts error:", error);
+    }
+  };
 
   const loadStreak = async () => {
     try {
@@ -527,12 +639,15 @@ export default function HomeScreen() {
 
   // ── Fact card ─────────────────────────────────────────────────────────────
   const FactCard = ({ fact }: { fact: FactType }) => (
-    <TouchableOpacity activeOpacity={0.88} onPress={() => setSelectedFact(fact)} style={styles.cardWrapper}>
+    <Pressable
+      onPress={() => setSelectedFact(fact)}
+      style={({ pressed }) => [styles.cardWrapper, pressed && styles.cardWrapperPressed]}
+    >
       <View style={styles.smallCard}>
         <Image source={fact.image} style={styles.coffeeImage} contentFit="contain" />
         <ThemedText style={styles.smallCardText}>{fact.shortFact}</ThemedText>
       </View>
-    </TouchableOpacity>
+    </Pressable>
   );
 
   // ── Streak label ──────────────────────────────────────────────────────────
@@ -619,6 +734,10 @@ export default function HomeScreen() {
           contentContainerStyle={styles.horizontalScrollContent}
           renderItem={({ item }) => <FactCard fact={item} />}
           onScroll={handleInfiniteScroll}
+          onMomentumScrollEnd={(event) => {
+            const next = Math.round(event.nativeEvent.contentOffset.x / ITEM_SIZE);
+            carouselIndexRef.current = next;
+          }}
           scrollEventThrottle={16}
           decelerationRate="fast"
           snapToInterval={ITEM_SIZE}
@@ -707,13 +826,6 @@ export default function HomeScreen() {
                           {item.suggestion}
                         </ThemedText>
                       </View>
-                      <ThemedText style={[styles.modalReferencesTitle, { color: coffee }]}>references</ThemedText>
-                      {item.references.map((ref, index) => (
-                        <View key={index} style={styles.modalRefRow}>
-                          <View style={styles.modalRefDot} />
-                          <ThemedText style={[styles.modalReference, { color: text }]}>{ref}</ThemedText>
-                        </View>
-                      ))}
                     </View>
                   )}
                 />
@@ -1126,6 +1238,7 @@ const styles = StyleSheet.create({
     paddingTop: 4, paddingBottom: 10,
   },
   cardWrapper: { width: CARD_WIDTH, marginRight: CARD_GAP },
+  cardWrapperPressed: { transform: [{ scale: 0.985 }] },
   smallCard: {
     width: "100%", height: FACT_CARD_HEIGHT,
     borderRadius: 18, padding: 10,
@@ -1190,10 +1303,6 @@ const styles = StyleSheet.create({
     padding: 10, marginBottom: 16,
   },
   modalSuggestion:      { flex: 1, fontSize: 13, lineHeight: 19, fontWeight: "600" },
-  modalReferencesTitle: { fontSize: 12, fontWeight: "700", marginBottom: 8, textTransform: "lowercase", opacity: 0.7 },
-  modalRefRow:  { flexDirection: "row", alignItems: "flex-start", marginBottom: 6 },
-  modalRefDot:  { width: 4, height: 4, borderRadius: 2, backgroundColor: "#C4A882", marginTop: 8, marginRight: 8, flexShrink: 0 },
-  modalReference: { flex: 1, fontSize: 12, lineHeight: 18, color: "#7A675C", textAlign: "justify" },
   closeButton:     { marginTop: 16, paddingVertical: 12, borderRadius: 999, alignItems: "center" },
   closeButtonText: { color: "#FFF", fontSize: 14, fontWeight: "600", textTransform: "lowercase" },
 
@@ -1397,3 +1506,4 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
 });
+

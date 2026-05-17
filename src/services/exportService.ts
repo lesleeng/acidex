@@ -23,7 +23,7 @@ export async function shareAnalysisPdf(record: AnalysisRecord): Promise<void> {
         <p><b>Stomach state:</b> ${esc(record.stomachState ?? "Not logged")}</p>
         <p><b>Cups today:</b> ${record.cupsToday ?? 1}</p>
       </div>
-      <p style="margin-top:16px; color:#6C564B;">AI-assisted guidance, informational only.</p>
+      <p style="margin-top:16px; color:#6C564B;">For awareness only, not medical care. This is not a diagnosis or treatment plan. For reflux, GERD, or dental concerns, consult a qualified healthcare professional.</p>
     </body>
   </html>
   `;
