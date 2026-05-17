@@ -72,13 +72,15 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    padding: 20,
+    paddingTop: 35,
+    paddingBottom: 24,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingTop: 35,
+    marginTop: 20,
     marginBottom: 20,
+    paddingHorizontal: 15,
   },
   backButton: {
     paddingLeft: 0,
@@ -92,9 +94,11 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '600',
     marginBottom: 30,
+    paddingHorizontal: 20,
   },
   content: {
     flex: 1,
+    paddingHorizontal: 20,
   },
   sectionTitle: {
     color: Colors.light.text,

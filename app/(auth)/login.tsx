@@ -1,7 +1,7 @@
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { Image } from 'expo-image'
+import { router } from 'expo-router'
 import * as WebBrowser from 'expo-web-browser'
-import Colors from '@/constants/colors'
-
 import React, { useEffect, useState } from 'react'
 import {
   Alert,
@@ -16,25 +16,23 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native'
-import { router } from 'expo-router'
 
-import { supabase } from '@/lib/supabase'
-import ShowPwIcon from '@/assets/images/show-pw.svg'
 import HidePwIcon from '@/assets/images/hide-pw.svg'
+import ShowPwIcon from '@/assets/images/show-pw.svg'
+import googlePng from '../../assets/images/google.png'
+import Colors from "../../constants/colors.ts"
+import { supabase } from '../../lib/supabase.ts'
 
-export default function SignUpScreen() {
+export default function LoginScreen() {
   const [email, setEmail] = useState('')
-  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
 
   const [emailFocused, setEmailFocused] = useState(false)
-  const [nameFocused, setNameFocused] = useState(false)
   const [passwordFocused, setPasswordFocused] = useState(false)
 
   const emailLabelAnim = useState(new Animated.Value(0))[0]
-  const nameLabelAnim = useState(new Animated.Value(0))[0]
   const passwordLabelAnim = useState(new Animated.Value(0))[0]
 
   useEffect(() => {
@@ -46,14 +44,6 @@ export default function SignUpScreen() {
   }, [emailFocused, email])
 
   useEffect(() => {
-    Animated.timing(nameLabelAnim, {
-      toValue: nameFocused || username.length > 0 ? 1 : 0,
-      duration: 180,
-      useNativeDriver: true,
-    }).start()
-  }, [nameFocused, username])
-
-  useEffect(() => {
     Animated.timing(passwordLabelAnim, {
       toValue: passwordFocused || password.length > 0 ? 1 : 0,
       duration: 180,
@@ -61,50 +51,34 @@ export default function SignUpScreen() {
     }).start()
   }, [passwordFocused, password])
 
-  const handleSignUp = async () => {
-    if (!email || !username || !password) {
+  const handleLogin = async () => {
+    if (!email || !password) {
       Alert.alert('Error', 'Please fill in all fields')
       return
     }
 
     setLoading(true)
     try {
-      const { data, error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
-        options: { data: { full_name: username } },
       })
 
-      console.log('SIGNUP RESPONSE DATA:', data)
-      console.log('SIGNUP RESPONSE ERROR:', error)
+      console.log('LOGIN data:', data)
+      console.log('LOGIN error:', error)
 
       if (error) throw error
 
-      Alert.alert('Success', 'Account created successfully! Please check your email.')
-      router.replace('/(auth)/login')
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Sign up failed'
-
-      if (msg.toLowerCase().includes('password should contain')) {
-        Alert.alert(
-          'Weak Password',
-          'Use at least 8 characters with 1 uppercase, 1 lowercase, 1 number, and 1 special character.'
-        )
-        return
-      }
-
-      if (msg.toLowerCase().includes('already registered')) {
-        Alert.alert('Email Exists', 'This email is already registered. Please log in instead.')
-        return
-      }
-
-      Alert.alert('Sign Up Failed', msg)
+      router.replace('/(tabs)/home')
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Invalid email or password'
+      Alert.alert('Login Failed', message)
     } finally {
       setLoading(false)
     }
   }
 
-  const handleGoogleSignUp = async () => {
+  const handleGoogleLogin = async () => {
     if (loading) return
     setLoading(true)
 
@@ -125,6 +99,21 @@ export default function SignUpScreen() {
       if (error) throw error
       if (!data?.url) throw new Error('No OAuth URL returned')
 
+      const storage = AsyncStorage as unknown as {
+        getAllKeys: () => Promise<string[]>
+        getItem: (key: string) => Promise<string | null>
+      }
+
+      const keys = await storage.getAllKeys()
+      console.log('AS_KEYS:', keys)
+
+      for (const key of keys.filter(
+        (value: string) => value.toLowerCase().includes('auth') || value.startsWith('sb-')
+      )) {
+        const value = await storage.getItem(key)
+        console.log('AS_ITEM', key, value?.slice(0, 500))
+      }
+
       if (Platform.OS === 'web') {
         globalThis.location?.assign(data.url)
         return
@@ -144,7 +133,6 @@ export default function SignUpScreen() {
   }
 
   const showEmailLabel = emailFocused || email.length > 0
-  const showNameLabel = nameFocused || username.length > 0
   const showPasswordLabel = passwordFocused || password.length > 0
 
   return (
@@ -158,12 +146,12 @@ export default function SignUpScreen() {
             <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
               <Text style={styles.backText}>←</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => router.push('/(auth)/login')}>
-              <Text style={styles.loginLink}>log in</Text>
+            <TouchableOpacity onPress={() => router.push('/(auth)/signup')}>
+              <Text style={styles.signupLink}>sign up</Text>
             </TouchableOpacity>
           </View>
 
-          <Text style={styles.title}>sign up</Text>
+          <Text style={styles.title}>log in</Text>
 
           <View style={styles.form}>
             {/* EMAIL */}
@@ -201,42 +189,6 @@ export default function SignUpScreen() {
                 autoCorrect={false}
                 onFocus={() => setEmailFocused(true)}
                 onBlur={() => setEmailFocused(false)}
-              />
-            </View>
-
-            {/* NAME */}
-            <View style={styles.fieldBlock}>
-              <Animated.Text
-                style={[
-                  styles.floatingLabel,
-                  nameFocused && styles.floatingLabelActive,
-                  {
-                    opacity: nameLabelAnim,
-                    transform: [
-                      {
-                        translateY: nameLabelAnim.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [8, 0],
-                        }),
-                      },
-                    ],
-                  },
-                ]}
-              >
-                username
-              </Animated.Text>
-              <TextInput
-                style={[
-                  styles.underlineInput,
-                  nameFocused && styles.underlineInputActive,
-                ]}
-                value={username}
-                onChangeText={setUsername}
-                placeholder={showNameLabel ? '' : 'enter your username'}
-                placeholderTextColor="#999"
-                autoCapitalize="words"
-                onFocus={() => setNameFocused(true)}
-                onBlur={() => setNameFocused(false)}
               />
             </View>
 
@@ -292,26 +244,33 @@ export default function SignUpScreen() {
             </View>
 
             <TouchableOpacity
-              style={[styles.signUpButton, loading && styles.buttonDisabled]}
-              onPress={handleSignUp}
+              style={styles.forgotPassword}
+              onPress={() => router.push('/(auth)/forgot-password')}
+            >
+              <Text style={styles.forgotPasswordText}>forgot password?</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.loginButton, loading && styles.buttonDisabled]}
+              onPress={handleLogin}
               disabled={loading}
             >
-              <Text style={styles.signUpButtonText}>
-                {loading ? 'signing up...' : 'sign up'}
+              <Text style={styles.loginButtonText}>
+                {loading ? 'logging in...' : 'log in'}
               </Text>
             </TouchableOpacity>
 
-            <Text style={styles.divider}>or sign up with social account</Text>
+            <Text style={styles.divider}>or log in with social account</Text>
 
             <View style={styles.socialButtons}>
               <TouchableOpacity
                 style={[styles.socialButton, loading && styles.buttonDisabled]}
-                onPress={handleGoogleSignUp}
+                onPress={handleGoogleLogin}
                 disabled={loading}
               >
                 <View style={styles.socialContent}>
                   <Image
-                    source={require('@/assets/images/google.png')}
+                    source={googlePng}
                     style={styles.googleIcon}
                     contentFit="contain"
                   />
@@ -322,20 +281,6 @@ export default function SignUpScreen() {
               </TouchableOpacity>
             </View>
           </View>
-
-          {/* ✅ FIXED: No TouchableOpacity nested inside Text */}
-          <View style={styles.termsContainer}>
-            <Text style={styles.termsText}>by signing up, you agree to our </Text>
-            <TouchableOpacity onPress={() => router.push('/terms')}>
-              <Text style={styles.termsLink}>terms of use</Text>
-            </TouchableOpacity>
-            <Text style={styles.termsText}> and </Text>
-            <TouchableOpacity onPress={() => router.push('/policy')}>
-              <Text style={styles.termsLink}>privacy policy</Text>
-            </TouchableOpacity>
-            <Text style={styles.termsText}>.</Text>
-          </View>
-
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -357,8 +302,16 @@ const styles = StyleSheet.create({
 
   backButton: { paddingLeft: 0 },
   backText: { fontSize: 30, color: Colors.light.text },
-  loginLink: { fontSize: 18, color: Colors.light.text },
-  title: { color: Colors.light.text, fontSize: 28, fontWeight: '600', marginBottom: 10, marginTop: 30 },
+  signupLink: { fontSize: 18, color: Colors.light.text },
+
+  title: {
+    color: Colors.light.text,
+    fontSize: 28,
+    fontWeight: '600',
+    marginBottom: 10,
+    marginTop: 30,
+  },
+
   form: { flex: 1, paddingTop: 20 },
 
   fieldBlock: {
@@ -420,7 +373,19 @@ const styles = StyleSheet.create({
 
   eyeIcon: { width: 24, height: 24 },
 
-  signUpButton: {
+  forgotPassword: {
+    alignSelf: 'flex-end',
+    marginTop: 10,
+    marginBottom: 15,
+  },
+
+  forgotPasswordText: {
+    color: Colors.light.coffee,
+    fontSize: 14,
+    fontWeight: '500',
+  },
+
+  loginButton: {
     backgroundColor: Colors.light.button,
     borderRadius: 25,
     padding: 16,
@@ -430,7 +395,7 @@ const styles = StyleSheet.create({
 
   buttonDisabled: { opacity: 0.6 },
 
-  signUpButtonText: {
+  loginButtonText: {
     color: Colors.light.background,
     fontSize: 16,
     fontWeight: '600',
@@ -475,14 +440,4 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-
-  termsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 5,
-  },
-  termsText: { textAlign: 'center', fontSize: 13, color: '#999' },
-  termsLink: { fontSize: 13, color: '#999', textDecorationLine: 'underline' },
 })

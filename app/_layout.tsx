@@ -1,16 +1,38 @@
 // app/_layout.tsx
+import React, { useEffect } from 'react';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
 import * as WebBrowser from 'expo-web-browser'
+import { Appearance } from 'react-native';
+import "../lib/icons.ts";
 WebBrowser.maybeCompleteAuthSession()
-import "../lib/icons";
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { getStoredThemeMode } from '@/src/data/themeStore';
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
+
+  useEffect(() => {
+    let mounted = true;
+
+    const hydrateTheme = async () => {
+      const storedMode = await getStoredThemeMode();
+      if (!mounted) return;
+
+      if (storedMode === 'light' || storedMode === 'dark') {
+        Appearance.setColorScheme?.(storedMode);
+      }
+    };
+
+    hydrateTheme();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>

@@ -1,7 +1,7 @@
-import { supabase } from '@/lib/supabase'
-import { router, useLocalSearchParams } from 'expo-router'
-import { useEffect, useRef } from 'react'
-import { ActivityIndicator, Alert, Text, View } from 'react-native'
+import { supabase } from '@/lib/supabase';
+import { router, useLocalSearchParams } from 'expo-router';
+import React, { useEffect, useRef } from 'react';
+import { ActivityIndicator, Alert, Text, View } from 'react-native';
 
 export default function CallbackScreen() {
   const params = useLocalSearchParams()

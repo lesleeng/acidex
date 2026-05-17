@@ -1,8 +1,8 @@
 // app/index.tsx
-import { supabase } from "@/lib/supabase";
 import { router } from "expo-router";
 import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { supabase } from "../lib/supabase.ts";
 
 export default function LandingPage() {
   const [isLoading, setIsLoading] = useState(true);
